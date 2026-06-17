@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Instrument 05</span>
+        <h1>History</h1>
+    </div>
+    <p class="page-subtitle">The council record — past deliberations, cost, and step-by-step traces. Latest 100 runs.</p>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Execution log</h2>
+            <div class="subtitle">{{ runs|length }} run{{ '' if runs|length == 1 else 's' }} recorded</div>
+        </div>
+    </div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Run ID</th>
+                        <th>Preset</th>
+                        <th>Creator</th>
+                        <th class="num">Latency</th>
+                        <th class="num">Cost</th>
+                        <th>Persisted</th>
+                        <th>Expires</th>
+                        <th class="num"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in runs %}
+                    <tr>
+                        <td class="cell-id">{{ r.run_id }}</td>
+                        <td class="cell-mono cell-primary">fusion/{{ r.preset }}</td>
+                        <td class="cell-muted">{{ r.key_hash }}</td>
+                        <td class="num cell-muted">{{ r.wall_ms }}<span class="unit"> ms</span></td>
+                        <td class="cell-cost">${{ r.cost_usd }}</td>
+                        <td>
+                            <span class="badge {% if r.store_flag %}bg-success{% else %}bg-neutral no-dot{% endif %}">
+                                {% if r.store_flag %}Stored{% else %}Ephemeral{% endif %}
+                            </span>
+                        </td>
+                        <td class="cell-faint">{{ r.expires_at or '—' }}</td>
+                        <td class="num">
+                            {% if r.store_flag %}
+                            <button class="btn btn-secondary btn-sm"
+                                    hx-get="/admin/runs/{{ r.run_id }}/trace"
+                                    hx-target="#trace-details-{{ r.run_id }}"
+                                    hx-swap="innerHTML">
+                                View trace
+                            </button>
+                            {% else %}
+                            <span class="cell-note">not stored</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td id="trace-details-{{ r.run_id }}" colspan="8" class="trace-cell"></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="empty-cell">
+                            <div class="empty">
+                                <span class="empty-glyph">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>
+                                </span>
+                                <span class="empty-title">No deliberations on record</span>
+                                <p class="empty-text">Convene the council from the playground and runs will be logged here.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

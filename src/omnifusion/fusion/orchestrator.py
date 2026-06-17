@@ -1,0 +1,297 @@
+import time
+import json
+import uuid
+import logging
+from fastapi.responses import StreamingResponse
+from .types import Preset, FusionTrace
+from .panel import run_panel
+from .judge import run_judge
+from .synth import run_synthesis
+from ..api.schemas import ChatCompletionRequest
+from ..api.sse import wants_usage, usage_chunk_sse
+from ..budget.ledger import initialize_request_budget
+from ..store.runs import save_trace
+
+logger = logging.getLogger("omnifusion.orchestrator")
+
+
+def _read_usage(usage) -> tuple:
+    """Extract (prompt_tokens, completion_tokens) from a usage object or dict, defaulting to 0."""
+    if usage is None:
+        return 0, 0
+    if isinstance(usage, dict):
+        return int(usage.get("prompt_tokens", 0) or 0), int(usage.get("completion_tokens", 0) or 0)
+    return (
+        int(getattr(usage, "prompt_tokens", 0) or 0),
+        int(getattr(usage, "completion_tokens", 0) or 0),
+    )
+
+
+def _compute_usage(preset, panel_results, judge_analysis, final_result) -> dict:
+    """Build the response `usage` block.
+
+    Defaults to aggregating tokens across panel + judge + final stages, matching
+    what the request actually cost. If preset.usage_reporting == "final", only the
+    final synthesis call's usage is reported.
+    """
+    final_prompt, final_completion = _read_usage(getattr(final_result, "usage", None))
+
+    if getattr(preset, "usage_reporting", "aggregate") == "final":
+        prompt_tokens, completion_tokens = final_prompt, final_completion
+    else:
+        prompt_tokens, completion_tokens = final_prompt, final_completion
+        for r in panel_results:
+            p, c = _read_usage(r.usage)
+            prompt_tokens += p
+            completion_tokens += c
+        if judge_analysis is not None:
+            prompt_tokens += int(getattr(judge_analysis, "prompt_tokens", 0) or 0)
+            completion_tokens += int(getattr(judge_analysis, "completion_tokens", 0) or 0)
+
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+
+
+async def run_fusion(
+    run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
+):
+    start_time = time.time()
+
+    # 1. Initialize Request and Global budgets
+    ceiling_micro_usd = (
+        int(preset.cost_ceiling * 1_000_000)
+        if preset.cost_ceiling is not None
+        else None
+    )
+    await initialize_request_budget(run_id, ceiling_micro_usd)
+
+    panel_results = []
+    judge_analysis = None
+    degraded = False
+
+    try:
+        # 2. Run Panel
+        panel_results = await run_panel(
+            run_id,
+            preset,
+            request.messages,
+            min_success=preset.min_panel_success
+            if hasattr(preset, "min_panel_success")
+            else 1,
+        )
+
+        # 3. Run Judge
+        judge_analysis = await run_judge(
+            run_id, preset, request.messages, panel_results
+        )
+        # Fix (medium): use structural check instead of naive substring match for degraded.
+        # "Degraded" if judge explicitly notes failure/degradation in its consensus.
+        consensus_lower = judge_analysis.consensus.lower()
+        if (
+            "degraded" in consensus_lower
+            or "failed" in consensus_lower
+            or "parse failure" in consensus_lower
+            or "failed to execute" in consensus_lower
+        ):
+            degraded = True
+
+        # 4. Synthesis
+        context = {}
+        try:
+            final_result = await run_synthesis(
+                run_id, preset, request, panel_results, judge_analysis, context
+            )
+        except Exception as e:
+            on_fail = getattr(preset, "on_final_failure", "error")
+            if on_fail == "best_panel" and not request.stream:
+                # Fallback to best panelist answer
+                ok_panels = [r for r in panel_results if r.status == "ok"]
+                if ok_panels:
+                    best_panel = max(ok_panels, key=lambda x: len(x.content or ""))
+                    degraded = True
+
+                    final_response_dict = {
+                        "id": f"chatcmpl-{uuid.uuid4()}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": best_panel.content,
+                                },
+                                # OpenAI finish_reason is a closed enum; "fallback" breaks
+                                # strict clients. The degraded nature is recorded in the trace.
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0,
+                        },
+                    }
+
+                    wall_ms = int((time.time() - start_time) * 1000)
+                    panel_cost = sum(r.cost_usd for r in panel_results)
+                    judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
+                    total_cost = panel_cost + judge_cost
+                    trace = FusionTrace(
+                        run_id=run_id,
+                        preset=preset.name,
+                        cost_usd=total_cost,
+                        wall_ms=wall_ms,
+                        degraded=True,
+                        panel_results=panel_results,
+                        judge_analysis=judge_analysis,
+                        final_answer=best_panel.content,
+                    )
+                    await save_trace(trace, request.store, key_hash)
+                    return final_response_dict
+            raise e
+
+        if request.stream:
+            # Streaming commits 200 ONLY after final synthesis yields its first token
+            # Get the first chunk
+            first_chunk = await final_result.__anext__()
+
+            _fusion_model = f"fusion/{preset.name}"
+
+            def _chunk_sse(chunk) -> str:
+                """Serialize a chunk to SSE data, overriding model to fusion/<preset>."""
+                data = json.loads(chunk.model_dump_json())
+                data["model"] = _fusion_model
+                return json.dumps(data)
+
+            async def stream_generator():
+                completion_text = ""
+                stream_error = None
+                synth_usage = None
+                try:
+                    if first_chunk.choices and len(first_chunk.choices) > 0:
+                        delta = first_chunk.choices[0].delta
+                        if delta and delta.content:
+                            completion_text += delta.content
+                    if getattr(first_chunk, "usage", None):
+                        synth_usage = first_chunk.usage
+                    yield f"data: {_chunk_sse(first_chunk)}\n\n"
+
+                    async for chunk in final_result:
+                        if chunk.choices and len(chunk.choices) > 0:
+                            delta = chunk.choices[0].delta
+                            if delta and delta.content:
+                                completion_text += delta.content
+                        if getattr(chunk, "usage", None):
+                            synth_usage = chunk.usage
+                        yield f"data: {_chunk_sse(chunk)}\n\n"
+
+                    # Clean completion: optionally emit an aggregate usage chunk, then [DONE].
+                    if wants_usage(request):
+                        s_pt, s_ct = _read_usage(synth_usage)
+                        agg_pt, agg_ct = s_pt, s_ct
+                        for r in panel_results:
+                            p, c = _read_usage(getattr(r, "usage", None))
+                            agg_pt += p
+                            agg_ct += c
+                        if judge_analysis is not None:
+                            agg_pt += int(getattr(judge_analysis, "prompt_tokens", 0) or 0)
+                            agg_ct += int(getattr(judge_analysis, "completion_tokens", 0) or 0)
+                        yield usage_chunk_sse(_fusion_model, agg_pt, agg_ct)
+                    yield "data: [DONE]\n\n"
+
+                except Exception as exc:
+                    # Mid-stream failure (HTTP 200 already committed). Per the failure
+                    # policy we do NOT emit a synthetic error chunk and do NOT emit
+                    # [DONE] — an OpenAI-compatible client must see an aborted stream,
+                    # not a cleanly-terminated one. We record the failure in the trace
+                    # and re-raise so the transport closes the connection abnormally.
+                    stream_error = exc
+                    logger.error(
+                        f"Streaming synthesis error for run {run_id}: {exc}", exc_info=True
+                    )
+                finally:
+                    wall_ms = int((time.time() - start_time) * 1000)
+                    panel_cost = sum(r.cost_usd for r in panel_results)
+                    judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
+                    synth_cost = context.get("cost_usd", 0.0)
+                    total_cost = panel_cost + judge_cost + synth_cost
+                    trace = FusionTrace(
+                        run_id=run_id,
+                        preset=preset.name,
+                        cost_usd=total_cost,
+                        wall_ms=wall_ms,
+                        degraded=degraded or stream_error is not None,
+                        panel_results=panel_results,
+                        judge_analysis=judge_analysis,
+                        final_answer=completion_text,
+                    )
+                    await save_trace(trace, request.store, key_hash)
+
+                if stream_error is not None:
+                    # Abort the response so the client does not treat it as complete.
+                    raise stream_error
+
+            return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+        else:
+            content = final_result.choices[0].message.content
+            panel_cost = sum(r.cost_usd for r in panel_results)
+            judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
+            synth_cost = context.get("cost_usd", 0.0)
+            total_cost = panel_cost + judge_cost + synth_cost
+
+            wall_ms = int((time.time() - start_time) * 1000)
+
+            trace = FusionTrace(
+                run_id=run_id,
+                preset=preset.name,
+                cost_usd=total_cost,
+                wall_ms=wall_ms,
+                degraded=degraded,
+                panel_results=panel_results,
+                judge_analysis=judge_analysis,
+                final_answer=content,
+            )
+            await save_trace(trace, request.store, key_hash)
+
+            # Return an OpenAI-compatible response with fusion/<preset> as the model.
+            # Usage aggregates panel + judge + final by default (preset.usage_reporting).
+            usage = _compute_usage(preset, panel_results, judge_analysis, final_result)
+            finish_reason = getattr(final_result.choices[0], "finish_reason", "stop")
+            return {
+                "id": f"chatcmpl-{uuid.uuid4()}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": f"fusion/{preset.name}",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": content},
+                        "finish_reason": finish_reason or "stop",
+                    }
+                ],
+                "usage": usage,
+            }
+
+    except Exception as outer_err:
+        wall_ms = int((time.time() - start_time) * 1000)
+        panel_cost = sum(r.cost_usd for r in panel_results) if panel_results else 0.0
+        judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
+        total_cost = panel_cost + judge_cost
+        trace = FusionTrace(
+            run_id=run_id,
+            preset=preset.name,
+            cost_usd=total_cost,
+            wall_ms=wall_ms,
+            degraded=True,
+            panel_results=panel_results,
+            judge_analysis=judge_analysis,
+            final_answer=None,
+        )
+        await save_trace(trace, request.store, key_hash)
+        raise outer_err

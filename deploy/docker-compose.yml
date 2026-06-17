@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  omnifusion:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OMNIFUSION_SECRET_KEY=${OMNIFUSION_SECRET_KEY}
+      - OMNIFUSION_ADMIN_PASSWORD=${OMNIFUSION_ADMIN_PASSWORD}
+      - OMNIFUSION_API_KEYS=${OMNIFUSION_API_KEYS}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* ── Tribunal stage block ── */
+    .stage-fieldset {
+        border: 1px solid var(--rule-strong);
+        border-radius: var(--r-sm);
+        padding: var(--sp-4) var(--sp-4) var(--sp-2);
+        margin-bottom: var(--sp-5);
+        background: var(--surface-2);
+        position: relative;
+    }
+    .stage-fieldset > legend {
+        display: flex; align-items: center; gap: var(--sp-2);
+        font-family: var(--mono);
+        font-size: var(--t-label); font-weight: 600; letter-spacing: var(--track-label);
+        text-transform: uppercase; color: var(--ink-2);
+        padding: 0 var(--sp-2); margin-left: -2px;
+    }
+    .stage-fieldset > legend .num {
+        font-family: var(--mono); font-size: var(--t-micro); font-weight: 600;
+        color: var(--on-accent); background: var(--accent);
+        width: 16px; height: 16px; display: grid; place-items: center;
+        border-radius: var(--r-sm);
+    }
+    .stage-fieldset .form-group:last-child { margin-bottom: var(--sp-2); }
+
+    /* ── Panel roster (checkbox group keeps name=panel_models_raw) ── */
+    .panel-roster {
+        max-height: 176px; overflow-y: auto;
+        border: 1px solid var(--rule-strong);
+        border-radius: var(--r-sm);
+        background: var(--bg);
+    }
+    .panel-roster-item {
+        display: flex; align-items: center; gap: var(--sp-3);
+        padding: 7px var(--sp-3);
+        border-bottom: 1px solid var(--rule-faint);
+        cursor: pointer;
+        transition: background var(--fast) var(--ease);
+    }
+    .panel-roster-item:last-child { border-bottom: none; }
+    .panel-roster-item:hover { background: var(--surface-hover); }
+    .panel-roster-item label {
+        margin: 0 !important;
+        font-family: var(--mono); font-size: var(--t-small); letter-spacing: -0.01em;
+        text-transform: none; color: var(--ink); cursor: pointer; flex: 1;
+    }
+    .roster-empty { color: var(--ink-4); font-size: var(--t-body); padding: var(--sp-4); font-style: italic; font-family: var(--serif); }
+</style>
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Instrument 03</span>
+        <h1>Presets</h1>
+    </div>
+    <p class="page-subtitle">Compose the council: which models sit on the panel, who judges, and who writes the verdict.</p>
+</div>
+
+<div class="grid-2">
+    <!-- Presets List -->
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h2>Defined presets</h2>
+                <div class="subtitle">{{ presets|length }} recipe{{ '' if presets|length == 1 else 's' }} on record</div>
+            </div>
+        </div>
+        <div class="card-body flush">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Strategy</th>
+                            <th>Panel</th>
+                            <th>Judge</th>
+                            <th>Synthesis</th>
+                            <th class="num">Ceiling</th>
+                            <th class="num"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in presets %}
+                        <tr>
+                            <td class="cell-mono cell-primary">fusion/{{ p.name }}</td>
+                            <td><span class="badge bg-neutral no-dot">{{ p.strategy }}</span></td>
+                            <td class="cell-muted cell-clip">{{ p.panel_models|join(', ') }}</td>
+                            <td class="cell-muted">{{ p.judge_model }}</td>
+                            <td class="cell-muted">{{ p.final_model }}</td>
+                            <td class="cell-cost">{% if p.cost_ceiling %}${{ p.cost_ceiling }}{% else %}—{% endif %}</td>
+                            <td class="num">
+                                <form action="/admin/presets/{{ p.name }}/delete" method="POST" onsubmit="return confirm('Delete preset “{{ p.name }}”? This cannot be undone.');" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="empty-cell">
+                                <div class="empty">
+                                    <span class="empty-glyph">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line><circle cx="9" cy="7" r="2.3"></circle><circle cx="15" cy="12" r="2.3"></circle><circle cx="8" cy="17" r="2.3"></circle></svg>
+                                    </span>
+                                    <span class="empty-title">No recipes yet</span>
+                                    <p class="empty-text">Define how the council deliberates — panel, judge, and synthesis — using the form alongside.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Preset Form -->
+    <div class="card">
+        <div class="card-head">
+            <h2>Compose preset</h2>
+        </div>
+        <div class="card-body">
+            <form action="/admin/presets/save" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="form-group">
+                    <label for="name">Preset name</label>
+                    <input type="text" name="name" id="name" class="form-control mono" placeholder="general, fast, strict" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="strategy">Fusion strategy</label>
+                    <select name="strategy" id="strategy" class="form-control" required>
+                        <option value="B">Strategy B — Judge plan &amp; synthesis</option>
+                        <option value="A" disabled>Strategy A — Consensus / average (stubbed)</option>
+                        <option value="C" disabled>Strategy C — Iterative review (stubbed)</option>
+                    </select>
+                    <small class="form-hint">Strategy B is fully implemented.</small>
+                </div>
+
+                <fieldset class="stage-fieldset">
+                    <legend><span class="num">1</span> Panel</legend>
+                    <div class="form-group">
+                        <label>Panel models <span class="text-secondary">select up to 8</span></label>
+                        <div class="panel-roster">
+                            {% for m in all_models %}
+                            <div class="panel-roster-item">
+                                <input type="checkbox" name="panel_models_raw" value="{{ m }}" id="p-{{ m }}">
+                                <label for="p-{{ m }}">{{ m }}</label>
+                            </div>
+                            {% else %}
+                            <div class="roster-empty">No models available — configure providers first.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="panel_max_tokens">Max tokens</label>
+                            <input type="number" name="panel_max_tokens" id="panel_max_tokens" class="form-control tnum" value="1024" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="panel_timeout">Timeout (s)</label>
+                            <input type="number" name="panel_timeout" id="panel_timeout" class="form-control tnum" value="30" required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stage-fieldset">
+                    <legend><span class="num">2</span> Judge</legend>
+                    <div class="form-group">
+                        <label for="judge_model">Judge model</label>
+                        <select name="judge_model" id="judge_model" class="form-control mono" required>
+                            {% for m in all_models %}
+                            <option value="{{ m }}">{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="judge_max_tokens">Max tokens</label>
+                            <input type="number" name="judge_max_tokens" id="judge_max_tokens" class="form-control tnum" value="512" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="judge_timeout">Timeout (s)</label>
+                            <input type="number" name="judge_timeout" id="judge_timeout" class="form-control tnum" value="30" required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stage-fieldset">
+                    <legend><span class="num">3</span> Synthesis</legend>
+                    <div class="form-group">
+                        <label for="final_model">Final model</label>
+                        <select name="final_model" id="final_model" class="form-control mono" required>
+                            {% for m in all_models %}
+                            <option value="{{ m }}">{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="final_max_tokens">Max tokens</label>
+                            <input type="number" name="final_max_tokens" id="final_max_tokens" class="form-control tnum" value="2048" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="final_timeout">Timeout (s)</label>
+                            <input type="number" name="final_timeout" id="final_timeout" class="form-control tnum" value="60" required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <div class="form-group">
+                    <label for="cost_ceiling">Cost ceiling <span class="text-secondary">· usd / request</span></label>
+                    <input type="number" step="0.01" name="cost_ceiling" id="cost_ceiling" class="form-control tnum" value="0.50" required>
+                    <small class="form-hint">Enforced atomically in the SQLite ledger.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="on_final_failure">On final failure</label>
+                    <select name="on_final_failure" id="on_final_failure" class="form-control" required>
+                        <option value="error">Return error (standard)</option>
+                        <option value="best_panel">Fallback to best panel answer (pre-stream only)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="min_panel_success">Minimum panel successes</label>
+                    <input type="number" name="min_panel_success" id="min_panel_success" class="form-control tnum" value="1" min="1" max="8" required>
+                    <small class="form-hint">Required successful panel responses before the judge convenes.</small>
+                </div>
+
+                <button type="submit" class="btn btn-block">Save preset</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

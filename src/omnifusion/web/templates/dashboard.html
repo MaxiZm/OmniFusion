@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* ── Ledger header: spend dominates; the rest is demoted to a reading ──
+       Not a four-up stat grid. One governed headline figure (lifetime spend)
+       sits left; a derived instrument (cost per deliberation) the operator
+       can't read off the nav sits right; the trivial inventory counts collapse
+       to a single mono reading underneath. */
+    .ledger-strip {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        border: 1px solid var(--rule);
+        background: var(--surface-1);
+        margin-bottom: var(--sp-5);
+    }
+    @media (max-width: 640px) { .ledger-strip { grid-template-columns: 1fr; } }
+
+    .ledger-headline {
+        padding: var(--sp-5) var(--sp-5) var(--sp-4);
+        border-right: 1px solid var(--rule);
+    }
+    @media (max-width: 640px) { .ledger-headline { border-right: none; border-bottom: 1px solid var(--rule); } }
+
+    .ledger-label {
+        display: flex; align-items: center; gap: var(--sp-2);
+        font-family: var(--mono);
+        font-size: var(--t-label); letter-spacing: var(--track-label); text-transform: uppercase;
+        color: var(--ink-3);
+    }
+    .ledger-label svg { width: 13px; height: 13px; stroke-width: 1.6; color: var(--ink-4); }
+
+    .ledger-figure {
+        font-family: var(--serif);
+        font-size: var(--t-hero); font-weight: 400; letter-spacing: -0.02em;
+        line-height: 1; margin-top: var(--sp-4);
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        display: flex; align-items: baseline;
+    }
+    .ledger-figure .unit { color: var(--ink-4); font-size: var(--t-h2); margin-right: 3px; }
+
+    /* the derived instrument, right column */
+    .ledger-derived { padding: var(--sp-5) var(--sp-5) var(--sp-4); display: flex; flex-direction: column; }
+    .ledger-derived .ledger-figure { font-size: var(--t-h1); }
+
+    /* a single mono reading line for the demoted counts */
+    .ledger-readout {
+        display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap;
+        margin-top: auto; padding-top: var(--sp-4);
+        font-family: var(--mono); font-size: var(--t-small);
+        color: var(--ink-3); letter-spacing: 0.01em;
+        font-variant-numeric: tabular-nums;
+    }
+    .ledger-readout b { color: var(--ink); font-weight: 600; }
+    .ledger-readout .sep { color: var(--ink-4); }
+    .ledger-foot { font-family: var(--mono); font-size: var(--t-label); color: var(--ink-4); margin-top: var(--sp-3); letter-spacing: 0.02em; }
+
+    /* ── Budget gauge — the headline instrument ── */
+    .gauge-body { padding: var(--sp-6) var(--sp-5) var(--sp-5); }
+    .gauge-figures { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); flex-wrap: wrap; }
+    .gauge-spent {
+        font-family: var(--serif); font-size: var(--t-h1); font-weight: 400; letter-spacing: -0.02em;
+        color: var(--ink); font-variant-numeric: tabular-nums;
+    }
+    .gauge-spent .unit { color: var(--ink-4); font-size: var(--t-h3); }
+    .gauge-spent .of { font-family: var(--mono); font-size: var(--t-base); color: var(--ink-3); letter-spacing: 0; margin-left: var(--sp-2); }
+    .gauge-pct { font-family: var(--mono); font-size: var(--t-base); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .gauge-pct.warn { color: var(--warn); }
+    .gauge-pct.over { color: var(--danger); }
+
+    .track {
+        position: relative;
+        width: 100%; height: 10px;
+        background: var(--bg);
+        border: 1px solid var(--rule-strong);
+        border-radius: var(--r-sm);
+        overflow: hidden;
+    }
+    /* tick marks at quartiles */
+    .track::after {
+        content: ''; position: absolute; inset: 0;
+        background-image: linear-gradient(90deg, transparent calc(25% - 1px), var(--rule-strong) calc(25% - 1px), var(--rule-strong) 25%, transparent 25%,
+            transparent calc(50% - 1px), var(--rule-strong) calc(50% - 1px), var(--rule-strong) 50%, transparent 50%,
+            transparent calc(75% - 1px), var(--rule-strong) calc(75% - 1px), var(--rule-strong) 75%, transparent 75%);
+        pointer-events: none;
+    }
+    .fill {
+        height: 100%;
+        background: var(--accent);
+        transition: width 0.7s var(--ease);
+        position: relative; z-index: 1;
+    }
+    .fill.warn { background: var(--warn); }
+    .fill.over { background: var(--danger); }
+    /* axis: quartile dollar labels aligned to the 0/25/50/75/100 ticks
+       (consistent units — all dollars, no mixed %/$ scale) */
+    .gauge-scale {
+        display: flex; justify-content: space-between;
+        margin-top: var(--sp-2);
+        font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4);
+        font-variant-numeric: tabular-nums;
+    }
+    .gauge-scale span { flex: 1; text-align: center; }
+    .gauge-scale span:first-child { text-align: left; }
+    .gauge-scale span.end { text-align: right; }
+
+    /* ── Quick actions ── */
+    .actions { display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-5); }
+</style>
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Instrument 01</span>
+        <h1>Dashboard</h1>
+    </div>
+    <p class="page-subtitle">Operational telemetry and spend governance for the fusion council.</p>
+</div>
+
+<div class="ledger-strip">
+    <div class="ledger-headline">
+        <div class="ledger-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            Lifetime spend
+        </div>
+        <div class="ledger-figure"><span class="unit">$</span>{{ total_spent }}</div>
+        <div class="ledger-readout">
+            across <b>{{ total_runs }}</b> deliberation{{ '' if total_runs == 1 else 's' }}
+            <span class="sep">·</span>
+            <b>{{ total_providers }}</b> provider{{ '' if total_providers == 1 else 's' }}
+            <span class="sep">·</span>
+            <b>{{ total_presets }}</b> preset{{ '' if total_presets == 1 else 's' }}
+        </div>
+    </div>
+    <div class="ledger-derived">
+        <div class="ledger-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><polyline points="7 14 11 9 14 12 19 6"></polyline></svg>
+            Avg cost / deliberation
+        </div>
+        {% if total_runs > 0 %}
+            <div class="ledger-figure"><span class="unit">$</span>{{ '%.5f'|format(total_spent / total_runs) }}</div>
+            <div class="ledger-foot">mean over {{ total_runs }} run{{ '' if total_runs == 1 else 's' }}</div>
+        {% else %}
+            <div class="ledger-figure"><span class="unit">$</span>0.00000</div>
+            <div class="ledger-foot">no runs recorded yet</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Global daily budget</h2>
+            <div class="subtitle">durable sqlite · atomic spend ledger</div>
+        </div>
+        {% if daily_ceiling > 0 %}
+            {% set pct = (daily_spent / daily_ceiling) * 100 %}
+            <span class="badge {% if pct >= 100 %}bg-danger{% elif pct >= 80 %}bg-warning{% else %}bg-success{% endif %}">
+                {% if pct >= 100 %}Limit reached{% elif pct >= 80 %}Approaching limit{% else %}Healthy{% endif %}
+            </span>
+        {% else %}
+            <span class="badge bg-neutral no-dot">No ceiling set</span>
+        {% endif %}
+    </div>
+    <div class="gauge-body">
+        <div class="gauge-figures">
+            <span class="gauge-spent"><span class="unit">$</span>{{ daily_spent }}<span class="of">of ${{ daily_ceiling }} ceiling</span></span>
+            {% if daily_ceiling > 0 %}
+                {% set pct = (daily_spent / daily_ceiling) * 100 %}
+                <span class="gauge-pct {% if pct >= 100 %}over{% elif pct >= 80 %}warn{% endif %}">{{ pct|int }}% consumed</span>
+            {% else %}
+                <span class="gauge-pct">unmetered</span>
+            {% endif %}
+        </div>
+        <div class="track">
+            {% if daily_ceiling > 0 %}
+                {% set pct = (daily_spent / daily_ceiling) * 100 %}
+                <div class="fill {% if pct >= 100 %}over{% elif pct >= 80 %}warn{% endif %}" style="width: {{ pct if pct < 100 else 100 }}%"></div>
+            {% else %}
+                <div class="fill" style="width: 0%"></div>
+            {% endif %}
+        </div>
+        {% if daily_ceiling > 0 %}
+        <div class="gauge-scale">
+            <span>$0</span>
+            <span>${{ '%.2f'|format(daily_ceiling * 0.25) }}</span>
+            <span>${{ '%.2f'|format(daily_ceiling * 0.5) }}</span>
+            <span>${{ '%.2f'|format(daily_ceiling * 0.75) }}</span>
+            <span class="end">${{ '%.2f'|format(daily_ceiling) }}</span>
+        </div>
+        {% else %}
+        <div class="gauge-scale">
+            <span>$0</span><span>·</span><span>·</span><span>·</span><span class="end">unmetered</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="actions">
+    <a href="/admin/playground" class="btn">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+        Convene the council
+    </a>
+    <a href="/admin/presets" class="btn btn-secondary">Manage presets</a>
+    <a href="/admin/providers" class="btn btn-secondary">Configure providers</a>
+</div>
+{% endblock %}

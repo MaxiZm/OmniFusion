@@ -1,0 +1,46 @@
+# Fix C: Root .dockerignore so that `docker build` run from the project root
+# (or via docker-compose) excludes secrets, local state, and dev artifacts
+# from the build context. Without this file, .env, .git, .venv, and the local
+# SQLite DB are baked into image layers even if not COPYed explicitly.
+
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+
+# --- Local database / runtime state ---
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# --- Version control ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Python virtual environment ---
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+
+# --- Development / test artifacts ---
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+tests/
+*.test.db
+
+# --- IDE config ---
+.vscode/
+.idea/
+
+# --- Build artifacts ---
+dist/
+build/
+*.egg-info/

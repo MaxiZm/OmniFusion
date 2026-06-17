@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .login-screen {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        background: var(--bg);
+    }
+    @media (max-width: 860px) { .login-screen { grid-template-columns: 1fr; } }
+
+    /* ── Left editorial panel — flat surface + ledger hairlines only.
+       No hero glow. Visual interest is structural: an oversized brand-mark
+       watermark and a tracked-out vertical mono string, in the system's own
+       language. ── */
+    .login-aside {
+        position: relative;
+        border-right: 1px solid var(--rule);
+        background-color: var(--surface-1);
+        background-image: linear-gradient(90deg, var(--rule-faint) 1px, transparent 1px);
+        background-size: 64px 100%;
+        padding: var(--sp-8) var(--sp-7);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+    }
+    @media (max-width: 860px) { .login-aside { display: none; } }
+
+    /* oversized structural rendering of the brand-mark, drawn in hairlines */
+    .login-watermark {
+        position: absolute;
+        right: -56px; bottom: -64px;
+        width: 360px; height: 360px;
+        color: var(--rule-strong);
+        opacity: 0.5;
+        pointer-events: none;
+        z-index: 0;
+    }
+    .login-watermark svg { width: 100%; height: 100%; display: block; }
+
+    /* tracked-out vertical instrument string down the left rule */
+    .login-rail {
+        position: absolute;
+        left: var(--sp-4); top: 0; bottom: 0;
+        display: flex; align-items: center;
+        writing-mode: vertical-rl; transform: rotate(180deg);
+        font-family: var(--mono); font-size: var(--t-micro);
+        letter-spacing: 0.42em; text-transform: uppercase;
+        color: var(--ink-4);
+        pointer-events: none;
+        z-index: 0;
+    }
+    .login-brand, .login-pitch, .login-foot { position: relative; z-index: 1; }
+
+    .login-brand { display: flex; align-items: center; gap: var(--sp-3); }
+    .login-brand .brand-mark { width: 30px; height: 30px; }
+    .login-brand .brand-word { font-family: var(--serif); font-size: var(--t-h2); font-weight: 500; }
+    .login-brand .brand-word em { font-style: italic; color: var(--accent); font-weight: 400; }
+
+    .login-pitch h2 {
+        font-family: var(--serif);
+        font-size: var(--t-hero);
+        line-height: 1.08;
+        font-weight: 400;
+        letter-spacing: -0.025em;
+        color: var(--ink);
+        max-width: 14ch;
+        margin: 0 0 var(--sp-5);
+    }
+    .login-pitch h2 em { font-style: italic; color: var(--accent); }
+    .login-spec {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--rule);
+        border: 1px solid var(--rule);
+        max-width: 420px;
+    }
+    .login-spec div { background: var(--surface-1); padding: var(--sp-3) var(--sp-4); }
+    .login-spec dt {
+        font-family: var(--mono); font-size: var(--t-label); letter-spacing: var(--track-label);
+        text-transform: uppercase; color: var(--ink-4); margin-bottom: 5px;
+    }
+    .login-spec dd { margin: 0; font-family: var(--mono); font-size: var(--t-body); color: var(--ink-2); }
+    .login-spec dd b { color: var(--accent-bright); font-weight: 600; }
+
+    .login-foot { font-family: var(--mono); font-size: var(--t-label); color: var(--ink-4); letter-spacing: 0.04em; }
+
+    /* ── Right form panel ── */
+    .login-formwrap {
+        display: grid;
+        place-items: center;
+        padding: var(--sp-7) var(--sp-5);
+    }
+    .login-card { width: 100%; max-width: 360px; }
+    .login-card .mobile-brand { display: none; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-6); }
+    @media (max-width: 860px) { .login-card .mobile-brand { display: flex; } }
+
+    .login-card .eyebrow {
+        font-family: var(--mono); font-size: var(--t-label); font-weight: 500;
+        letter-spacing: var(--track-label); text-transform: uppercase; color: var(--accent);
+        display: block; margin-bottom: var(--sp-3);
+    }
+    .login-card h1 { font-size: var(--t-h1); margin: 0 0 var(--sp-2); }
+    .login-card .page-subtitle { font-size: var(--t-body); margin-bottom: var(--sp-6); }
+    .login-card .mobile-brand .brand-word { font-family: var(--serif); font-size: var(--t-h3); }
+    .login-card .mobile-brand .brand-word em { font-style: italic; color: var(--accent); }
+</style>
+
+<div class="login-screen">
+    <aside class="login-aside">
+        <span class="login-rail">Council Control · Console</span>
+        <span class="login-watermark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v18"></path><path d="M5 7h14"></path>
+                <path d="M5 7 2.5 13.5h5z"></path><path d="M19 7l-2.5 6.5h5z"></path><path d="M7.5 18h9"></path>
+            </svg>
+        </span>
+        <div class="login-brand">
+            <span class="brand-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3v18"></path><path d="M5 7h14"></path>
+                    <path d="M5 7 2.5 13.5h5z"></path><path d="M19 7l-2.5 6.5h5z"></path><path d="M7.5 18h9"></path>
+                </svg>
+            </span>
+            <span class="brand-word">Omni<em>Fusion</em></span>
+        </div>
+
+        <div class="login-pitch">
+            <h2>A council of models, <em>weighed</em> and rendered as one verdict.</h2>
+            <dl class="login-spec">
+                <div><dt>Panel</dt><dd>parallel <b>N</b> models</dd></div>
+                <div><dt>Judge</dt><dd>consensus &amp; plan</dd></div>
+                <div><dt>Synthesis</dt><dd>streamed final</dd></div>
+                <div><dt>Ledger</dt><dd>atomic spend cap</dd></div>
+            </dl>
+        </div>
+
+        <div class="login-foot">SELF-HOSTED · OPENAI-COMPATIBLE GATEWAY · v1</div>
+    </aside>
+
+    <div class="login-formwrap">
+        <div class="login-card">
+            <div class="mobile-brand">
+                <span class="brand-mark">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v18"></path><path d="M5 7h14"></path>
+                        <path d="M5 7 2.5 13.5h5z"></path><path d="M19 7l-2.5 6.5h5z"></path><path d="M7.5 18h9"></path>
+                    </svg>
+                </span>
+                <span class="brand-word">Omni<em>Fusion</em></span>
+            </div>
+
+            <span class="eyebrow">Console Access</span>
+            <h1>Sign in</h1>
+            <p class="page-subtitle">Administrator credentials are required to open the council control panel.</p>
+
+            {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+
+            <form action="/admin/login" method="POST">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" name="username" id="username" class="form-control mono" placeholder="admin" required autocomplete="username" autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" name="password" id="password" class="form-control mono" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+
+                <button type="submit" class="btn btn-block">
+                    Open console
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

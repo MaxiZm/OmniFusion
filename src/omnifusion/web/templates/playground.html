@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .playground-grid {
+        display: grid;
+        grid-template-columns: minmax(310px, 0.82fr) 1.9fr;
+        gap: var(--sp-5);
+        align-items: start;
+    }
+    @media (max-width: 1040px) { .playground-grid { grid-template-columns: 1fr; } }
+
+    .config-card { position: sticky; top: var(--sp-5); }
+
+    /* ── Status / transport bar ── */
+    .status-bar {
+        display: flex; align-items: center; gap: var(--sp-3);
+        padding: var(--sp-3) var(--sp-4);
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-sm);
+        margin-bottom: var(--sp-5);
+        font-family: var(--mono);
+        font-size: var(--t-small); letter-spacing: -0.01em;
+        color: var(--ink-2);
+    }
+    .status-bar .status-dot {
+        width: 8px; height: 8px; flex-shrink: 0;
+        background: var(--ink-4);
+        transition: background var(--med) var(--ease);
+    }
+    .status-bar.is-running .status-dot { background: var(--warn); animation: pulse-dot 1.3s var(--ease) infinite; }
+    .status-bar.is-done .status-dot { background: var(--ok); }
+    .status-bar.is-error .status-dot { background: var(--danger); }
+    #status-indicator { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Stages ── */
+    .stage { margin-bottom: var(--sp-6); }
+    .stage:last-child { margin-bottom: 0; }
+    .stage-title {
+        display: flex; align-items: center; gap: var(--sp-3);
+        margin-bottom: var(--sp-4);
+        padding-bottom: var(--sp-3);
+        border-bottom: 1px solid var(--rule);
+    }
+    .stage-num {
+        width: 22px; height: 22px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-family: var(--mono);
+        font-size: var(--t-label); font-weight: 600;
+        display: grid; place-items: center;
+        flex-shrink: 0;
+        border-radius: var(--r-sm);
+    }
+    .stage-title h3 { color: var(--ink); }
+    .stage-title .stage-meta { margin-left: auto; font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4); letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* ── Panel cards ── */
+    .panel-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: var(--sp-3);
+    }
+    .panelist-card {
+        padding: var(--sp-4);
+        border-radius: var(--r-sm);
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+        border-left: 2px solid var(--rule-strong);
+        font-size: var(--t-body);
+        transition: border-color var(--med) var(--ease), background var(--med) var(--ease);
+    }
+    .panelist-card.ok { border-left-color: var(--ok); }
+    .panelist-card.error, .panelist-card.timeout { border-left-color: var(--danger); }
+    .panelist-header {
+        display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2);
+        font-family: var(--mono); font-size: var(--t-small); font-weight: 500; letter-spacing: -0.01em;
+        color: var(--ink);
+    }
+    .panelist-header > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* ── Telemetry micro-stat grid — tracked mono labels over tnum values,
+       matching the judge-grid label/value treatment. Replaces the prose
+       "Cost:" sentence so panel cards read like instruments. ── */
+    .panelist-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: var(--sp-2) var(--sp-3);
+        margin-top: var(--sp-3);
+        padding-top: var(--sp-3);
+        border-top: 1px solid var(--rule);
+    }
+    .panelist-metrics .stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .panelist-metrics .stat .k {
+        font-family: var(--mono); font-size: var(--t-micro);
+        letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4);
+    }
+    .panelist-metrics .stat .v {
+        font-family: var(--mono); font-size: var(--t-small);
+        color: var(--ink-2); font-variant-numeric: tabular-nums;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .panelist-metrics .stat .v.cost { color: var(--accent-bright); }
+    .panelist-metrics .stat .v.pending { color: var(--ink-4); }
+    .panelist-content {
+        margin-top: var(--sp-3);
+        background: var(--bg);
+        border: 1px solid var(--rule);
+        padding: var(--sp-3);
+        border-radius: var(--r-sm);
+        max-height: 120px; overflow-y: auto;
+        white-space: pre-wrap;
+        font-family: var(--mono); font-size: var(--t-small); line-height: 1.55;
+        color: var(--ink-2);
+    }
+
+    /* ── Judge dossier ── */
+    .judge-card {
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+        border-left: 2px solid var(--accent);
+        border-radius: var(--r-sm);
+        padding: var(--sp-5);
+    }
+    #judge-model-label { font-family: var(--mono); font-size: var(--t-small); color: var(--ink-2); letter-spacing: 0.02em; }
+    .judge-grid {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: var(--sp-5); margin-top: var(--sp-4);
+        padding-top: var(--sp-4);
+        border-top: 1px solid var(--rule);
+    }
+    @media (max-width: 560px) { .judge-grid { grid-template-columns: 1fr; } }
+    .judge-grid .label {
+        font-family: var(--mono);
+        font-size: var(--t-label); font-weight: 600; letter-spacing: var(--track-label);
+        text-transform: uppercase; color: var(--ink-3);
+        margin-bottom: var(--sp-2);
+    }
+    .judge-grid .value { color: var(--ink); font-size: var(--t-base); line-height: 1.6; font-family: var(--serif); }
+
+    /* ── Synthesis (the verdict) ── */
+    .output-stream {
+        background: var(--surface-1);
+        border: 1px solid var(--rule);
+        border-left: 2px solid var(--accent);
+        border-radius: var(--r-sm);
+        padding: var(--sp-5) var(--sp-6);
+        min-height: 140px; max-height: 460px; overflow-y: auto;
+        white-space: pre-wrap;
+        line-height: 1.72;
+        color: var(--ink);
+        font-family: var(--serif);
+        font-size: var(--t-lead);
+    }
+    .output-stream:empty::before {
+        content: 'The verdict will be written here, streamed token by token…';
+        color: var(--ink-4);
+        font-size: var(--t-base); font-style: italic;
+    }
+
+    /* ── Idle / empty state ── */
+    .empty-feed {
+        display: flex; flex-direction: column; align-items: center;
+        text-align: center; gap: var(--sp-3);
+        padding: var(--sp-8) var(--sp-5);
+    }
+    .empty-feed .empty-glyph { width: 44px; height: 44px; border: 1px solid var(--rule-strong); display: grid; place-items: center; color: var(--ink-3); margin-bottom: var(--sp-1); }
+    .empty-feed .empty-glyph svg { width: 22px; height: 22px; stroke-width: 1.4; }
+    .empty-feed .empty-title { font-family: var(--serif); font-size: var(--t-lead); color: var(--ink); font-style: italic; }
+    .empty-feed p { margin: 0; font-size: var(--t-body); color: var(--ink-3); max-width: 40ch; line-height: 1.55; }
+</style>
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Instrument 04</span>
+        <h1>Playground</h1>
+    </div>
+    <p class="page-subtitle">Convene the council against a live prompt. Each stage streams as it resolves.</p>
+</div>
+
+<div class="playground-grid">
+    <!-- Left Form -->
+    <div class="card config-card">
+        <div class="card-head">
+            <h2>Brief</h2>
+        </div>
+        <div class="card-body">
+            <form id="playground-form">
+                <div class="form-group">
+                    <label for="preset">Preset</label>
+                    <select name="preset_name" id="preset" class="form-control mono" required>
+                        {% for p in presets %}
+                        <option value="{{ p.name }}">fusion/{{ p.name }}</option>
+                        {% else %}
+                        <option value="" disabled>No presets configured</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="prompt">Prompt</label>
+                    <textarea name="prompt" id="prompt" class="form-control" rows="10" placeholder="State the question for the council…" required></textarea>
+                </div>
+
+                <div style="display:flex; gap: var(--sp-3);">
+                    <button type="submit" id="submit-btn" class="btn" style="flex: 1;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+                        Convene
+                    </button>
+                    <button type="button" id="cancel-btn" class="btn btn-danger" style="display: none;">Adjourn</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Live Outputs -->
+    <div class="card">
+        <div class="card-head">
+            <h2>Proceedings</h2>
+            <div class="subtitle">live execution feed</div>
+        </div>
+        <div class="card-body">
+            <div class="status-bar" id="status-bar">
+                <span class="status-dot"></span>
+                <span id="status-indicator">Ready. Select a preset and enter a prompt to convene.</span>
+            </div>
+
+            <!-- Placeholder shown before a run starts -->
+            <div class="empty-feed" id="empty-feed">
+                <span class="empty-glyph">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7 2.5 13.5h5z"></path><path d="M19 7l-2.5 6.5h5z"></path><path d="M7.5 18h9"></path></svg>
+                </span>
+                <span class="empty-title">The chamber is empty</span>
+                <p>Panel deliberation, the judge's reading, and the final synthesis will appear here in sequence.</p>
+            </div>
+
+            <!-- Stage 1: Panel -->
+            <div class="stage" id="panel-section" style="display: none;">
+                <div class="stage-title">
+                    <span class="stage-num">1</span>
+                    <h3>Council panel</h3>
+                    <span class="stage-meta">parallel</span>
+                </div>
+                <div class="panel-cards" id="panel-grid"></div>
+            </div>
+
+            <!-- Stage 2: Judge -->
+            <div class="stage" id="judge-section" style="display: none;">
+                <div class="stage-title">
+                    <span class="stage-num">2</span>
+                    <h3>Judge analysis</h3>
+                    <span class="stage-meta">adjudication</span>
+                </div>
+                <div id="judge-card" class="judge-card">
+                    <div id="judge-model-label">Judge model</div>
+                    <div class="judge-grid">
+                        <div>
+                            <div class="label">Consensus</div>
+                            <div id="judge-consensus" class="value">—</div>
+                        </div>
+                        <div>
+                            <div class="label">Recommended plan</div>
+                            <div id="judge-plan" class="value">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 3: Synthesis -->
+            <div class="stage" id="synth-section" style="display: none;">
+                <div class="stage-title">
+                    <span class="stage-num">3</span>
+                    <h3>Final synthesis</h3>
+                    <span class="stage-meta">verdict</span>
+                </div>
+                <div id="synth-output" class="output-stream"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentEventSource = null;
+let currentRunId = null;
+
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function setStatus(text, state) {
+    document.getElementById('status-indicator').textContent = text;
+    const bar = document.getElementById('status-bar');
+    bar.classList.remove('is-running', 'is-done', 'is-error');
+    if (state) bar.classList.add('is-' + state);
+}
+
+document.getElementById('playground-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    // Reset views
+    document.getElementById('panel-grid').innerHTML = '';
+    document.getElementById('panel-section').style.display = 'none';
+    document.getElementById('judge-section').style.display = 'none';
+    document.getElementById('synth-section').style.display = 'none';
+    document.getElementById('synth-output').textContent = '';
+    document.getElementById('empty-feed').style.display = 'none';
+
+    const submitBtn = document.getElementById('submit-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+
+    submitBtn.disabled = true;
+    cancelBtn.style.display = 'inline-flex';
+
+    const formData = new FormData(this);
+    formData.append('csrf_token', '{{ csrf_token }}');
+
+    try {
+        const response = await fetch('/admin/playground/run', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'x-csrf-token': '{{ csrf_token }}'
+            }
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(errText || 'Failed to start run');
+        }
+
+        const data = await response.json();
+        const runId = data.run_id;
+        currentRunId = runId;
+
+        startSSE(runId);
+
+    } catch(err) {
+        setStatus('Error: ' + err.message, 'error');
+        submitBtn.disabled = false;
+        cancelBtn.style.display = 'none';
+    }
+});
+
+document.getElementById('cancel-btn').addEventListener('click', async function() {
+    if (!currentRunId) return;
+
+    try {
+        await fetch(`/admin/playground/runs/${currentRunId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'x-csrf-token': '{{ csrf_token }}'
+            }
+        });
+        setStatus('Execution cancelled.', null);
+        cleanupConnection();
+    } catch(err) {
+        console.error('Failed to cancel', err);
+    }
+});
+
+function cleanupConnection() {
+    if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+    }
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('cancel-btn').style.display = 'none';
+}
+
+function startSSE(runId) {
+    setStatus('Connecting to execution stream…', 'running');
+
+    const sse = new EventSource(`/admin/playground/runs/${runId}/events`);
+    currentEventSource = sse;
+
+    sse.addEventListener('panel_started', function(e) {
+        setStatus('Panel models dispatched in parallel…', 'running');
+        document.getElementById('panel-section').style.display = 'block';
+        const data = JSON.parse(e.data);
+        // Pre-create panelist placeholders
+        const grid = document.getElementById('panel-grid');
+        data.models.forEach(model => {
+            const cardId = 'panelist-' + model.replace(/[^a-zA-Z0-9]/g, '-');
+            grid.innerHTML += `
+                <div class="panelist-card" id="${cardId}">
+                    <div class="panelist-header">
+                        <span>${escapeHtml(model)}</span>
+                        <span class="badge bg-warning">Running</span>
+                    </div>
+                    <div class="panelist-metrics">
+                        <div class="stat"><span class="k">Cost</span><span class="v pending">—</span></div>
+                        <div class="stat"><span class="k">Verdict</span><span class="v pending">…</span></div>
+                        <div class="stat"><span class="k">Chars</span><span class="v pending">—</span></div>
+                    </div>
+                </div>
+            `;
+        });
+    });
+
+    sse.addEventListener('panel_result', function(e) {
+        const res = JSON.parse(e.data);
+        const cardId = 'panelist-' + res.model.replace(/[^a-zA-Z0-9]/g, '-');
+        const card = document.getElementById(cardId);
+        if (card) {
+            card.className = `panelist-card ${res.status}`;
+            const badgeClass = res.status === 'ok' ? 'bg-success' : 'bg-danger';
+            const chars = res.content ? res.content.length : 0;
+            const charLabel = chars >= 1000 ? (chars / 1000).toFixed(1) + 'k' : String(chars);
+            card.innerHTML = `
+                <div class="panelist-header">
+                    <span>${escapeHtml(res.model)}</span>
+                    <span class="badge ${badgeClass}">${escapeHtml(res.status)}</span>
+                </div>
+                <div class="panelist-metrics">
+                    <div class="stat"><span class="k">Cost</span><span class="v cost">$${res.cost_usd.toFixed(5)}</span></div>
+                    <div class="stat"><span class="k">Verdict</span><span class="v">${escapeHtml(res.status)}</span></div>
+                    <div class="stat"><span class="k">Chars</span><span class="v">${charLabel}</span></div>
+                </div>
+                ${res.content ? `<div class="panelist-content">${escapeHtml(res.content)}</div>` : ''}
+            `;
+        }
+    });
+
+    sse.addEventListener('judge_started', function(e) {
+        setStatus('Running judge analysis…', 'running');
+        document.getElementById('judge-section').style.display = 'block';
+        const data = JSON.parse(e.data);
+        document.getElementById('judge-model-label').textContent = 'Judge model: ' + data.model;
+    });
+
+    sse.addEventListener('judge_result', function(e) {
+        setStatus('Judge analysis complete.', 'running');
+        const analysis = JSON.parse(e.data);
+        document.getElementById('judge-consensus').textContent = analysis.consensus;
+        document.getElementById('judge-plan').textContent = analysis.recommended_final_answer_plan;
+    });
+
+    sse.addEventListener('final_started', function(e) {
+        setStatus('Streaming synthesis response…', 'running');
+        document.getElementById('synth-section').style.display = 'block';
+    });
+
+    sse.addEventListener('final_delta', function(e) {
+        const div = document.getElementById('synth-output');
+        // Server sends data as JSON ({"content": "..."}) so newlines in the model's
+        // output don't corrupt SSE framing; parse it back out before appending.
+        div.textContent += JSON.parse(e.data).content;
+        div.scrollTop = div.scrollHeight;
+    });
+
+    sse.addEventListener('done', function(e) {
+        setStatus('Execution finished successfully.', 'done');
+        cleanupConnection();
+    });
+
+    sse.addEventListener('error', function(e) {
+        setStatus('Error: ' + escapeHtml(e.data || 'stream interrupted'), 'error');
+        cleanupConnection();
+    });
+
+    sse.onerror = function() {
+        // We do not cancel immediately because browser event source auto-reconnects.
+        // But if we want to guide user, we can print it.
+    };
+}
+</script>
+{% endblock %}

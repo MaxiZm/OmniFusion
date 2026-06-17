@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniFusion — Council Control</title>
+    <!-- Fonts: Newsreader (editorial serif display) · Archivo (technical grotesque) · Spline Sans Mono (data) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,18..72,400;0,18..72,500;1,18..72,400&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.11"></script>
+    <style>
+        :root {
+            /* ── Surfaces: warm graphite, layered ── */
+            --bg: #15140f;
+            --surface-1: #1b1a14;
+            --surface-2: #211f18;
+            --surface-3: #28261d;
+            --surface-hover: #2f2c22;
+            --paper: #ece7da;           /* the "page" ink colour, used as text */
+
+            /* ── Hairline rules ── */
+            --rule: #322f25;
+            --rule-strong: #423e30;
+            --rule-faint: #262318;
+
+            /* ── Ink (text) ── */
+            --ink: #ece7da;
+            --ink-2: #b3ad9c;
+            --ink-3: #837d6c;
+            --ink-4: #5c5849;
+            --on-accent: #160d06;
+
+            /* ── The ONE accent: molten amber ── */
+            --accent: #e8743b;
+            --accent-bright: #f59056;
+            --accent-deep: #7a3c1e;
+            --accent-wash: rgba(232, 116, 59, 0.12);
+            --accent-line: rgba(232, 116, 59, 0.42);
+
+            /* ── Status (desaturated, ink-adjacent) ── */
+            --ok: #9bb38a;
+            --ok-wash: rgba(155, 179, 138, 0.13);
+            --ok-line: rgba(155, 179, 138, 0.38);
+            --warn: #d6a44f;
+            --warn-wash: rgba(214, 164, 79, 0.13);
+            --warn-line: rgba(214, 164, 79, 0.38);
+            --danger: #cc6a5a;
+            --danger-wash: rgba(204, 106, 90, 0.13);
+            --danger-line: rgba(204, 106, 90, 0.40);
+
+            /* ── Type families ── */
+            --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+            --sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+            /* ── Type scale: a deliberate modular ladder (~1.25 major-third
+               above body; tight steps below). Every role references a token
+               here — no fractional ad-hoc sizes scattered through templates. ── */
+            --t-micro:  10px;   /* gauge ticks, dense footers            */
+            --t-label:  11px;   /* THE canonical small-caps mono label    */
+            --t-small:  12px;   /* mono ids, secondary cell text          */
+            --t-body:   13px;   /* table cells, controls, buttons         */
+            --t-base:   14px;   /* body copy                              */
+            --t-lead:   16px;   /* synthesis verdict reading size         */
+            --t-h3:     19px;   /* card / section serif title             */
+            --t-h2:     24px;   /* — reserved larger serif step           */
+            --t-h1:     34px;   /* page display                           */
+            --t-hero:   42px;   /* login pitch                            */
+            /* canonical small-caps mono label tracking */
+            --track-label: 0.16em;
+
+            /* ── Spacing (4px base) ── */
+            --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+            --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
+
+            /* ── Radii: nearly square, instrument-like ── */
+            --r-sm: 2px;
+            --r-md: 3px;
+            --r-lg: 4px;
+            --r-full: 999px;
+
+            /* ── Motion ── */
+            --ease: cubic-bezier(0.2, 0, 0, 1);
+            --fast: 0.12s;
+            --med: 0.22s;
+
+            --sidebar-w: 236px;
+        }
+
+        * { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
+
+        body {
+            background-color: var(--bg);
+            /* faint vertical hairline grid texture — the "ledger paper" */
+            background-image: linear-gradient(90deg, var(--rule-faint) 1px, transparent 1px);
+            background-size: 88px 100%;
+            background-position: var(--sidebar-w) 0;
+            color: var(--ink);
+            font-family: var(--sans);
+            font-size: var(--t-base);
+            line-height: 1.5;
+            margin: 0;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-feature-settings: "ss01";
+        }
+
+        ::selection { background: var(--accent); color: var(--on-accent); }
+
+        ::-webkit-scrollbar { width: 11px; height: 11px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--rule-strong); border: 3px solid var(--bg); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+
+        a { color: var(--accent); text-decoration: none; }
+
+        /* numeric helper used everywhere */
+        .tnum { font-variant-numeric: tabular-nums; }
+
+        /* ════════════ App shell ════════════ */
+        .app-shell {
+            display: grid;
+            grid-template-columns: var(--sidebar-w) 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 0;
+            align-self: start;
+            height: 100vh;
+            border-right: 1px solid var(--rule);
+            background: var(--surface-1);
+            display: flex;
+            flex-direction: column;
+            padding: var(--sp-5) var(--sp-4) var(--sp-4);
+        }
+
+        /* ── Wordmark / signature ── */
+        .brand {
+            display: block;
+            padding: 0 var(--sp-2) var(--sp-5);
+            margin-bottom: var(--sp-4);
+            border-bottom: 1px solid var(--rule);
+            color: var(--ink);
+        }
+        .brand:hover { color: var(--ink); }
+        .brand-row { display: flex; align-items: center; gap: var(--sp-3); }
+        .brand-mark {
+            width: 26px; height: 26px;
+            flex-shrink: 0;
+            border: 1px solid var(--accent-line);
+            display: grid; place-items: center;
+            position: relative;
+        }
+        .brand-mark::after {
+            content: ''; position: absolute; inset: -1px;
+            border-top: 1px solid var(--accent);
+            border-left: 1px solid var(--accent);
+            width: 7px; height: 7px;
+        }
+        .brand-mark svg { width: 16px; height: 16px; display: block; }
+        .brand-word {
+            font-family: var(--serif);
+            font-size: var(--t-h3);
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            line-height: 1;
+        }
+        .brand-word em { font-style: italic; color: var(--accent); font-weight: 400; }
+        .brand-sub {
+            display: block;
+            margin-top: var(--sp-3);
+            font-size: var(--t-micro);
+            font-weight: 600;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+            font-family: var(--mono);
+        }
+
+        .nav-label {
+            font-family: var(--mono);
+            font-size: var(--t-label);
+            font-weight: 500;
+            letter-spacing: var(--track-label);
+            text-transform: uppercase;
+            color: var(--ink-4);
+            padding: var(--sp-4) var(--sp-2) var(--sp-2);
+        }
+
+        .nav-links { display: flex; flex-direction: column; }
+        .nav-links a {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: var(--sp-3);
+            color: var(--ink-2);
+            font-weight: 500;
+            font-size: var(--t-body);
+            letter-spacing: -0.005em;
+            padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+            transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+        }
+        .nav-links a svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; stroke-width: 1.6; }
+        .nav-links a:hover { color: var(--ink); background: var(--surface-hover); }
+        .nav-links a.active { color: var(--ink); }
+        .nav-links a.active::before {
+            content: ''; position: absolute; left: -16px; top: 50%;
+            transform: translateY(-50%);
+            width: 3px; height: 16px; background: var(--accent);
+        }
+        .nav-links a.active svg { color: var(--accent); opacity: 1; }
+        .nav-index {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: var(--t-micro);
+            color: var(--ink-4);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .sidebar-foot {
+            margin-top: auto;
+            padding-top: var(--sp-4);
+            border-top: 1px solid var(--rule);
+        }
+        .sidebar-foot form { margin: 0; }
+        .nav-logout {
+            width: 100%;
+            display: flex; align-items: center; gap: var(--sp-3);
+            background: transparent;
+            border: none;
+            color: var(--ink-3);
+            padding: var(--sp-2) var(--sp-3);
+            cursor: pointer;
+            font-family: var(--sans);
+            font-weight: 500;
+            font-size: var(--t-body);
+            transition: color var(--fast) var(--ease);
+        }
+        .nav-logout svg { width: 15px; height: 15px; stroke-width: 1.6; }
+        .nav-logout:hover { color: var(--accent); }
+
+        /* ── Content ── */
+        .content {
+            min-width: 0;
+            padding: var(--sp-7) var(--sp-7) var(--sp-8);
+            max-width: 1280px;
+        }
+        .app-shell.bare { grid-template-columns: 1fr; }
+        .app-shell.bare .content { max-width: none; padding: 0; }
+        body:has(.app-shell.bare) { background-image: none; }
+
+        /* ════════════ Page header ════════════ */
+        .page-head {
+            margin-bottom: var(--sp-6);
+            padding-bottom: var(--sp-4);
+            border-bottom: 1px solid var(--rule);
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: var(--sp-5);
+            flex-wrap: wrap;
+        }
+        .page-head .eyebrow {
+            font-family: var(--mono);
+            font-size: var(--t-label);
+            font-weight: 500;
+            letter-spacing: var(--track-label);
+            text-transform: uppercase;
+            color: var(--accent);
+            display: block;
+            margin-bottom: var(--sp-2);
+        }
+        h1 {
+            font-family: var(--serif);
+            font-size: var(--t-h1);
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            line-height: 1.02;
+            margin: 0;
+            color: var(--ink);
+        }
+        h2 {
+            font-family: var(--serif);
+            font-size: var(--t-h3);
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            margin: 0;
+            color: var(--ink);
+        }
+        h3 {
+            font-family: var(--mono);
+            font-size: var(--t-label);
+            font-weight: 600;
+            letter-spacing: var(--track-label);
+            text-transform: uppercase;
+            margin: 0;
+            color: var(--ink-2);
+        }
+        .page-subtitle {
+            color: var(--ink-2);
+            font-size: var(--t-base);
+            margin: 0;
+            max-width: 58ch;
+            line-height: 1.55;
+        }
+
+        .mono { font-family: var(--mono); font-size: 0.9em; letter-spacing: -0.01em; }
+        .text-secondary { color: var(--ink-2); }
+
+        /* ════════════ Cards (square, ruled — not floating) ════════════ */
+        .card {
+            background: var(--surface-1);
+            border: 1px solid var(--rule);
+            margin-bottom: var(--sp-5);
+        }
+        .card-head {
+            padding: var(--sp-4) var(--sp-5);
+            border-bottom: 1px solid var(--rule);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--sp-4);
+            background: var(--surface-2);
+        }
+        .card-head .subtitle {
+            color: var(--ink-3);
+            font-family: var(--mono);
+            font-size: var(--t-label);
+            letter-spacing: 0.02em;
+            margin-top: 5px;
+        }
+        .card-body { padding: var(--sp-5); }
+        .card-body.flush { padding: 0; }
+
+        /* ════════════ Buttons ════════════ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--sp-2);
+            background: var(--accent);
+            color: var(--on-accent);
+            border: 1px solid var(--accent);
+            padding: 8px 15px;
+            border-radius: var(--r-sm);
+            font-family: var(--sans);
+            font-weight: 600;
+            font-size: var(--t-body);
+            letter-spacing: 0.005em;
+            line-height: 1;
+            cursor: pointer;
+            transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        .btn:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
+
+        .btn-secondary {
+            background: transparent;
+            border-color: var(--rule-strong);
+            color: var(--ink);
+        }
+        .btn-secondary:hover { background: var(--surface-3); border-color: var(--ink-4); color: var(--ink); }
+
+        .btn-danger {
+            background: transparent;
+            border-color: var(--danger-line);
+            color: var(--danger);
+        }
+        .btn-danger:hover { background: var(--danger-wash); border-color: var(--danger); }
+
+        .btn-sm { padding: 5px 10px; font-size: var(--t-label); }
+        .btn:disabled { opacity: 0.42; cursor: not-allowed; }
+
+        /* ════════════ Forms ════════════ */
+        .form-group { margin-bottom: var(--sp-5); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+
+        .form-group label {
+            display: block;
+            margin-bottom: var(--sp-2);
+            font-family: var(--mono);
+            font-weight: 500;
+            font-size: var(--t-label);
+            letter-spacing: var(--track-label);
+            text-transform: uppercase;
+            color: var(--ink-2);
+        }
+        .form-group label .text-secondary { letter-spacing: 0.04em; text-transform: none; color: var(--ink-3); }
+        .form-hint {
+            display: block;
+            color: var(--ink-3);
+            font-size: var(--t-small);
+            margin-top: var(--sp-2);
+            line-height: 1.45;
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--rule-strong);
+            color: var(--ink);
+            padding: 9px 11px;
+            border-radius: var(--r-sm);
+            font-size: var(--t-body);
+            font-family: var(--sans);
+            transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+        }
+        .form-control.mono, input.mono, textarea.mono { font-family: var(--mono); font-size: var(--t-body); }
+        .form-control::placeholder { color: var(--ink-4); }
+        .form-control:hover { border-color: var(--ink-4); }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-wash);
+        }
+        textarea.form-control { resize: vertical; line-height: 1.6; min-height: 96px; }
+
+        select.form-control {
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23837d6c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 11px center;
+            padding-right: 32px;
+        }
+        select.form-control option { background: var(--surface-2); color: var(--ink); }
+        select.form-control option:disabled { color: var(--ink-4); }
+        select[multiple].form-control { padding: var(--sp-2); }
+
+        input[type="checkbox"] {
+            appearance: none; -webkit-appearance: none;
+            width: 15px; height: 15px;
+            border: 1px solid var(--rule-strong);
+            border-radius: var(--r-sm);
+            background: var(--bg);
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+            transition: all var(--fast) var(--ease);
+        }
+        input[type="checkbox"]:hover { border-color: var(--ink-4); }
+        input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+        input[type="checkbox"]:checked::after {
+            content: ''; position: absolute; left: 4px; top: 1px;
+            width: 4px; height: 8px;
+            border: solid var(--on-accent); border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+        input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-wash); }
+
+        a:focus-visible, button:focus-visible, .form-control:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .form-control:focus-visible { outline: none; }
+
+        /* ════════════ Tables (ledger) ════════════ */
+        .table-wrap { width: 100%; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        thead th {
+            font-family: var(--mono);
+            font-weight: 500;
+            font-size: var(--t-label);
+            letter-spacing: var(--track-label);
+            text-transform: uppercase;
+            color: var(--ink-3);
+            padding: var(--sp-3) var(--sp-5);
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--rule);
+            white-space: nowrap;
+        }
+        thead th.num { text-align: right; }
+        tbody td {
+            padding: var(--sp-3) var(--sp-5);
+            border-bottom: 1px solid var(--rule-faint);
+            font-size: var(--t-body);
+            color: var(--ink);
+            vertical-align: middle;
+        }
+        tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr { transition: background var(--fast) var(--ease); }
+        tbody tr:hover td { background: var(--surface-2); }
+        td.cell-id { font-family: var(--mono); font-size: var(--t-small); color: var(--ink-2); }
+        .empty-cell { padding: 0 !important; }
+
+        /* ── Ledger cell modifiers (semantic, not inline style=) ──
+           One named class per cell role so row markup stays declarative and
+           the scale stays consistent across providers / presets / runs. */
+        td.cell-primary { color: var(--ink); font-weight: 500; }
+        td.cell-mono { font-family: var(--mono); }
+        td.cell-muted { font-family: var(--mono); color: var(--ink-2); }
+        td.cell-faint { font-family: var(--mono); color: var(--ink-3); font-size: var(--t-small); }
+        td.cell-clip { max-width: 220px; }
+        td.cell-cost {
+            font-family: var(--mono);
+            color: var(--accent-bright);
+            font-weight: 500;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        /* muted unit suffix inside a numeric cell ("ms", currency mark) */
+        .unit { color: var(--ink-4); }
+        /* inline mono micro-note inside a cell (e.g. "not stored") */
+        .cell-note { font-family: var(--mono); font-size: var(--t-label); color: var(--ink-3); }
+        /* a form that should sit inline in a table cell without box spacing */
+        form.inline-form { display: inline; margin: 0; }
+        /* full-bleed submit button at the foot of a form panel */
+        .btn-block { width: 100%; }
+
+        /* ════════════ Considered empty state ════════════ */
+        .empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: var(--sp-3);
+            padding: var(--sp-8) var(--sp-5);
+        }
+        .empty-glyph {
+            width: 44px; height: 44px;
+            border: 1px solid var(--rule-strong);
+            display: grid; place-items: center;
+            color: var(--ink-3);
+            margin-bottom: var(--sp-1);
+        }
+        .empty-glyph svg { width: 22px; height: 22px; stroke-width: 1.4; }
+        .empty-title { font-family: var(--serif); font-size: var(--t-lead); color: var(--ink); font-style: italic; }
+        .empty-text { margin: 0; font-size: var(--t-body); color: var(--ink-3); max-width: 40ch; line-height: 1.55; }
+
+        /* ════════════ Badges / pills ════════════ */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: var(--r-sm);
+            font-family: var(--mono);
+            font-size: var(--t-label);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            line-height: 1.4;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+        .badge::before {
+            content: ''; width: 5px; height: 5px;
+            background: currentColor; flex-shrink: 0;
+        }
+        .badge.no-dot::before { display: none; }
+        .bg-success { background: var(--ok-wash); color: var(--ok); border-color: var(--ok-line); }
+        .bg-danger  { background: var(--danger-wash); color: var(--danger); border-color: var(--danger-line); }
+        .bg-warning { background: var(--warn-wash); color: var(--warn); border-color: var(--warn-line); }
+        .bg-accent  { background: var(--accent-wash); color: var(--accent-bright); border-color: var(--accent-line); }
+        .bg-neutral { background: var(--surface-3); color: var(--ink-2); border-color: var(--rule-strong); }
+
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+        .badge.bg-warning::before { animation: pulse-dot 1.3s var(--ease) infinite; }
+
+        /* ════════════ Alerts ════════════ */
+        .alert {
+            padding: var(--sp-3) var(--sp-4);
+            border-radius: var(--r-sm);
+            margin-bottom: var(--sp-5);
+            font-size: var(--t-body);
+            border: 1px solid transparent;
+            border-left-width: 3px;
+        }
+        .alert-danger { background: var(--danger-wash); color: var(--danger); border-color: var(--danger-line); }
+
+        /* ════════════ Layout helpers ════════════ */
+        .grid-2 { display: grid; grid-template-columns: 1.75fr 1fr; gap: var(--sp-5); align-items: start; }
+
+        /* ── Run trace block — a first-class style ──
+           The trace endpoint streams a <pre> into the expander cell. We define
+           a real .trace rule (no Bootstrap-leftover attribute patching) and let
+           the server's literal class names alias onto it so the panel renders
+           identically however the markup arrives. */
+        pre.trace,
+        pre.text-light,
+        pre[class*="bg-dark"] {
+            background: var(--bg);
+            border: none;
+            border-top: 1px solid var(--rule);
+            border-radius: 0;
+            padding: var(--sp-4) var(--sp-5);
+            margin: 0;
+            font-family: var(--mono);
+            font-size: var(--t-small);
+            line-height: 1.6;
+            color: var(--ink-2);
+            overflow-x: auto;
+            white-space: pre;
+        }
+        /* The expander cell holds the <pre> flush — the trace reads as a
+           ruled sub-ledger nested under its run row. */
+        td.trace-cell { padding: 0 !important; background: var(--surface-2); }
+        td.trace-cell:empty { display: none; }
+
+        /* ════════════ Responsive ════════════ */
+        @media (max-width: 1040px) { .grid-2 { grid-template-columns: 1fr; } }
+        @media (max-width: 820px) {
+            body { background-image: none; }
+            .app-shell { grid-template-columns: 1fr; }
+            .sidebar {
+                position: static; height: auto;
+                flex-direction: row; flex-wrap: wrap; align-items: center;
+                gap: var(--sp-1); padding: var(--sp-3) var(--sp-4);
+            }
+            .brand { margin-bottom: 0; padding: 0 var(--sp-3) 0 0; margin-right: var(--sp-3); border-bottom: none; border-right: 1px solid var(--rule); }
+            .brand-sub { display: none; }
+            .nav-label { display: none; }
+            .nav-links { flex-direction: row; flex-wrap: wrap; }
+            .nav-links a span:not(.brand-word) { display: none; }
+            .nav-links a .nav-index { display: none; }
+            .nav-links a { padding: var(--sp-2); }
+            .nav-links a.active::before { left: 0; top: auto; bottom: 0; transform: none; width: 100%; height: 2px; }
+            .sidebar-foot { margin-top: 0; margin-left: auto; padding-top: 0; border-top: none; }
+            .nav-logout span { display: none; }
+            .content { padding: var(--sp-5) var(--sp-4) var(--sp-7); }
+        }
+        @media (max-width: 560px) {
+            .form-row { grid-template-columns: 1fr; }
+            h1 { font-size: 27px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+        }
+    </style>
+</head>
+<body>
+    {% if csrf_token %}
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a href="/admin/" class="brand">
+                <span class="brand-row">
+                    <span class="brand-mark">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3v18"></path>
+                            <path d="M5 7h14"></path>
+                            <path d="M5 7 2.5 13.5h5z"></path>
+                            <path d="M19 7l-2.5 6.5h5z"></path>
+                            <path d="M7.5 18h9"></path>
+                        </svg>
+                    </span>
+                    <span class="brand-word">Omni<em>Fusion</em></span>
+                </span>
+                <span class="brand-sub">Council Control</span>
+            </a>
+
+            <div class="nav-label">Instruments</div>
+            <nav class="nav-links">
+                <a href="/admin/" data-nav="dashboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h7V3H3z"></path><path d="M14 21h7V8h-7z"></path><path d="M14 3v3h7V3z"></path><path d="M3 17v4h7v-4z"></path></svg>
+                    <span>Dashboard</span><span class="nav-index">01</span>
+                </a>
+                <a href="/admin/providers" data-nav="providers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1"></rect><rect x="3" y="14" width="18" height="6" rx="1"></rect><line x1="7" y1="7" x2="7.01" y2="7"></line><line x1="7" y1="17" x2="7.01" y2="17"></line></svg>
+                    <span>Providers</span><span class="nav-index">02</span>
+                </a>
+                <a href="/admin/presets" data-nav="presets">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line><circle cx="9" cy="7" r="2.3" fill="var(--surface-1)"></circle><circle cx="15" cy="12" r="2.3" fill="var(--surface-1)"></circle><circle cx="8" cy="17" r="2.3" fill="var(--surface-1)"></circle></svg>
+                    <span>Presets</span><span class="nav-index">03</span>
+                </a>
+                <a href="/admin/playground" data-nav="playground">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+                    <span>Playground</span><span class="nav-index">04</span>
+                </a>
+                <a href="/admin/runs" data-nav="runs">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>
+                    <span>History</span><span class="nav-index">05</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-foot">
+                <form action="/admin/logout" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="nav-logout">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path><polyline points="10 17 5 12 10 7"></polyline><line x1="5" y1="12" x2="16" y2="12"></line></svg>
+                        <span>Sign out</span>
+                    </button>
+                </form>
+            </div>
+        </aside>
+
+        <div class="content">
+    {% else %}
+    <div class="app-shell bare">
+        <div class="content">
+    {% endif %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    {% if csrf_token %}
+    <script>
+        // Highlight the active nav item based on the current path.
+        (function () {
+            var path = window.location.pathname.replace(/\/+$/, '') || '/admin';
+            var links = document.querySelectorAll('.nav-links a');
+            var best = null, bestLen = -1;
+            links.forEach(function (a) {
+                var href = a.getAttribute('href').replace(/\/+$/, '') || '/admin';
+                if ((path === href || path.indexOf(href + '/') === 0) && href.length > bestLen) {
+                    best = a; bestLen = href.length;
+                }
+            });
+            if (!best) {
+                links.forEach(function (a) {
+                    if ((a.getAttribute('href').replace(/\/+$/, '') || '/admin') === '/admin') best = a;
+                });
+            }
+            if (best) best.classList.add('active');
+        })();
+    </script>
+    {% endif %}
+</body>
+</html>
