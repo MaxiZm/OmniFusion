@@ -1,20 +1,26 @@
 {
   "claims": [],
+  "ci_method": null,
   "commit_sha": null,
   "comparisons": {
     "best_single": {
       "cost_budget_equal": null,
       "solve_per_usd_delta_ci95": null,
-      "solve_per_usd_delta_mean": null
+      "solve_per_usd_delta_mean": null,
+      "solve_per_wall_s_delta_ci95": null,
+      "solve_per_wall_s_delta_mean": null
     },
     "judge_selected_best_of_n": {
       "cost_budget_equal": null,
       "solve_per_usd_delta_ci95": null,
-      "solve_per_usd_delta_mean": null
+      "solve_per_usd_delta_mean": null,
+      "solve_per_wall_s_delta_ci95": null,
+      "solve_per_wall_s_delta_mean": null
     }
   },
   "component": null,
   "date": null,
+  "failure_modes": {},
   "pricing": null,
   "runs": [],
   "status": "template_not_run",

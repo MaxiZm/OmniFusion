@@ -13,8 +13,8 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool)
 
 
-def _ci95(comparison: dict[str, Any]) -> list[Any]:
-    value = comparison.get("solve_per_usd_delta_ci95")
+def _ci95(comparison: dict[str, Any], field: str) -> list[Any]:
+    value = comparison.get(field)
     return value if isinstance(value, list) else []
 
 
@@ -24,9 +24,15 @@ def validate_ablation_artifact(artifact: dict[str, Any]) -> list[str]:
     if artifact.get("tier") != "C":
         errors.append("artifact tier must be C real-provider evidence")
 
+    if artifact.get("ci_method") != "bootstrap":
+        errors.append("ci_method must be bootstrap")
+
     for field in ("strategy", "component", "date", "commit_sha", "pricing"):
         if not artifact.get(field):
             errors.append(f"missing required field: {field}")
+
+    if not isinstance(artifact.get("failure_modes"), dict) or not artifact["failure_modes"]:
+        errors.append("artifact must include failure_modes breakdown")
 
     runs = artifact.get("runs")
     if not isinstance(runs, list) or len(runs) < 3:
@@ -44,11 +50,14 @@ def validate_ablation_artifact(artifact: dict[str, Any]) -> list[str]:
             continue
         if comparison.get("cost_budget_equal") is not True:
             errors.append(f"{baseline} comparison must use an equal cost/token budget")
-        if not _is_number(comparison.get("solve_per_usd_delta_mean")):
-            errors.append(f"{baseline} comparison missing numeric solve_per_usd_delta_mean")
-        ci95 = _ci95(comparison)
-        if len(ci95) != 2 or not all(_is_number(value) for value in ci95):
-            errors.append(f"{baseline} comparison missing numeric solve_per_usd_delta_ci95")
+        for metric in ("solve_per_usd", "solve_per_wall_s"):
+            mean_field = f"{metric}_delta_mean"
+            ci95_field = f"{metric}_delta_ci95"
+            if not _is_number(comparison.get(mean_field)):
+                errors.append(f"{baseline} comparison missing numeric {mean_field}")
+            ci95 = _ci95(comparison, ci95_field)
+            if len(ci95) != 2 or not all(_is_number(value) for value in ci95):
+                errors.append(f"{baseline} comparison missing numeric {ci95_field}")
 
     if artifact.get("claims"):
         errors.append("ablation artifacts must not contain marketing claims")
@@ -62,8 +71,9 @@ def can_enable_default(artifact: dict[str, Any]) -> bool:
 
     comparisons = artifact["comparisons"]
     for baseline in REQUIRED_BASELINES:
-        ci95_low = _ci95(comparisons[baseline])[0]
-        if ci95_low <= 0:
+        solve_per_usd_low = _ci95(comparisons[baseline], "solve_per_usd_delta_ci95")[0]
+        solve_per_wall_low = _ci95(comparisons[baseline], "solve_per_wall_s_delta_ci95")[0]
+        if solve_per_usd_low <= 0 or solve_per_wall_low <= 0:
             return False
     return True
 
