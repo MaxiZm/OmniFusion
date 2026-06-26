@@ -135,8 +135,14 @@ def _extract_pdf_text(body: bytes) -> str:
         ) from exc
     import io
 
-    reader = pypdf.PdfReader(io.BytesIO(body))
-    return "\n".join((page.extract_text() or "") for page in reader.pages)
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(body))
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception:
+        # A PDF truncated at the content-size cap (or otherwise corrupt) can't be
+        # parsed; degrade to a bounded empty extraction rather than raising so the
+        # fetch still returns hardened metadata.
+        return ""
 
 
 def _bounded_text(value: str, max_chars: int) -> str:

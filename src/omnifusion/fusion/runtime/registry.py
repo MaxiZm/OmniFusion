@@ -57,12 +57,6 @@ async def _execute_tool_step(run_id, preset, body, key_hash):
     return await run_fusion_with_tools(run_id, preset, body, key_hash)
 
 
-async def _execute_conductor(run_id, preset, body, key_hash):
-    from ..strategies.conductor import execute_conductor
-
-    return await execute_conductor(run_id, preset, body, key_hash)
-
-
 async def execute_strategy(run_id, preset, body, key_hash):
     """Public entry point: run the selected strategy and unwrap its StrategyResult
     envelope into the OpenAI-shaped payload the API layer returns."""

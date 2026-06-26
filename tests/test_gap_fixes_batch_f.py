@@ -79,6 +79,48 @@ async def _run(monkeypatch, tmp_path, fake_call, max_repairs=1, db="m6f.db"):
         settings.omnifusion_conductor_max_repairs = old_repairs
 
 
+def test_ablation_validator_rejects_loose_failure_modes():
+    """[17] regression guard: a scalar/loose failure_modes value must be rejected,
+    not accepted as 'any non-empty dict'."""
+    from omnifusion.evals.ablations import validate_ablation_artifact
+
+    artifact = {
+        "strategy": "conductor",
+        "component": "planner",
+        "tier": "C",
+        "model": "m",
+        "provider": "p",
+        "date": "2026-06-26",
+        "ci_method": "bootstrap",
+        "commit_sha": "abc",
+        "pricing": {"currency": "USD"},
+        "failure_modes": {"syntax_error": 1},  # scalar, not a per-baseline breakdown
+        "runs": [
+            {"model": "m", "provider": "p", "solve_rate": 0.4},
+            {"model": "m", "provider": "p", "solve_rate": 0.4},
+            {"model": "m", "provider": "p", "solve_rate": 0.4},
+        ],
+        "comparisons": {
+            "best_single": {
+                "cost_budget_equal": True,
+                "solve_per_usd_delta_mean": 0.1,
+                "solve_per_usd_delta_ci95": [0.01, 0.2],
+                "solve_per_wall_s_delta_mean": 0.05,
+                "solve_per_wall_s_delta_ci95": [0.01, 0.09],
+            },
+            "judge_selected_best_of_n": {
+                "cost_budget_equal": True,
+                "solve_per_usd_delta_mean": 0.08,
+                "solve_per_usd_delta_ci95": [0.02, 0.15],
+                "solve_per_wall_s_delta_mean": 0.04,
+                "solve_per_wall_s_delta_ci95": [0.01, 0.08],
+            },
+        },
+    }
+    errors = "\n".join(validate_ablation_artifact(artifact))
+    assert "failure_modes[syntax_error]" in errors
+
+
 @pytest.mark.asyncio
 async def test_conductor_no_repair_path(tmp_path, monkeypatch):
     stages = []
@@ -95,6 +137,11 @@ async def test_conductor_no_repair_path(tmp_path, monkeypatch):
     assert stages == ["plan", "worker/worker-a", "verify", "merge"]
     assert trace.metadata["conductor"]["repair_count"] == 0
     assert response["choices"][0]["message"]["content"] == "merged"
+    # [9] ArtifactGraph stage graph is merged into the trace metadata.
+    artifacts = trace.metadata["artifacts"]
+    assert artifacts["repair_count"] == 0
+    assert [w["model"] for w in artifacts["workers"]] == ["worker-a"]
+    assert "final_chars" in artifacts
 
 
 @pytest.mark.asyncio

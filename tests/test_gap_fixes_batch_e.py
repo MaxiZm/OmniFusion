@@ -48,3 +48,16 @@ def test_full_page_retention_opt_in(monkeypatch):
     result = fetcher.fetch("https://example.com/page")
     assert "full_content" in result.trace_metadata
     assert "hello world body" in result.trace_metadata["full_content"]
+
+
+def test_truncated_or_corrupt_pdf_degrades_without_raising():
+    """An oversized PDF truncated at the byte cap (or otherwise unparseable) must
+    degrade to a bounded empty extraction, not raise out of WebFetcher.fetch.
+    Requires the optional 'pdf' extra (pypdf)."""
+    import pytest
+
+    pytest.importorskip("pypdf")
+    fetcher = _fetcher(transport=_transport(b"%PDF-1.4 truncated-garbage", "application/pdf"))
+    result = fetcher.fetch("https://example.com/big.pdf")
+    assert result.mime_type == "application/pdf"
+    assert result.excerpt == ""  # nothing extractable, but no exception
