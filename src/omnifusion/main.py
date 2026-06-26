@@ -168,6 +168,9 @@ async def validation_exception_handler(request, exc: RequestValidationError):
 app.include_router(chat_router, prefix="/v1")
 app.include_router(traces_router, prefix="/v1")
 app.include_router(models_router, prefix="/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(traces_router, prefix="/api/v1")
+app.include_router(models_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/admin")
 
 
