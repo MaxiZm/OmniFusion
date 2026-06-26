@@ -153,7 +153,8 @@ async def gather_web_context(
                 )
                 body = fetched.excerpt or body
                 truncated = fetched.truncated
-                # Invariant 6: persist only bounded metadata, never the full page.
+                # Invariant 6: persist only bounded metadata by default; the full
+                # page is included only when the opt-in retention flag is set.
                 source.update(
                     {
                         "fetched": True,
@@ -164,6 +165,8 @@ async def gather_web_context(
                         "truncated": fetched.truncated,
                     }
                 )
+                if settings.omnifusion_web_fetch_store_full_page and "full_content" in fetched.trace_metadata:
+                    source["full_content"] = fetched.trace_metadata["full_content"]
             except Exception as exc:  # noqa: BLE001 - fall back to the snippet
                 logger.info(f"web_fetch skipped for {result.url}: {exc}")
                 source["fetch_error"] = str(exc)

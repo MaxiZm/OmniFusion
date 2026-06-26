@@ -24,8 +24,10 @@ blocked.
 When web grounding is enabled (preset `web_enabled` or `plugins.web`), search and
 fetched content is folded into the panel context only inside nonce-delimited
 fences framed as untrusted data, never as instructions, so a poisoned page cannot
-redirect the run. Full pages are never persisted by default — only bounded
-excerpt metadata is kept (Invariant 6).
+redirect the run. By default only bounded excerpt metadata is kept (Invariant 6);
+full-page retention is an explicit opt-in via `OMNIFUSION_WEB_FETCH_STORE_FULL_PAGE`
+(off by default, with copyright/privacy cost). Fetched PDFs are text-extracted when
+the optional `pdf` extra is installed.
 
 Operators are responsible for respecting robots policies, source terms, and
 their own network boundaries.

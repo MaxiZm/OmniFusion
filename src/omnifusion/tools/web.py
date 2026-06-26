@@ -50,6 +50,7 @@ class _CacheEntry:
 _ALLOWED_SCHEMES = {"http", "https"}
 _ALLOWED_MIME_TYPES = {
     "application/json",
+    "application/pdf",
     "application/xhtml+xml",
     "application/xml",
     "text/html",
@@ -118,6 +119,24 @@ def _clean_html(raw_text: str, mime_type: str) -> str:
     without_active_markup = _SCRIPT_STYLE_RE.sub("", raw_text)
     without_tags = _TAG_RE.sub(" ", without_active_markup)
     return html.unescape(without_tags)
+
+
+def _extract_pdf_text(body: bytes) -> str:
+    """Extract text from a fetched PDF (the roadmap's 'pdf-text' MIME support).
+
+    pypdf is an optional extra so the base install stays lean; if it is missing we
+    fail with a clear, actionable message rather than treating PDF bytes as text.
+    """
+    try:
+        import pypdf
+    except ModuleNotFoundError as exc:  # pragma: no cover - exercised via the extra
+        raise ValueError(
+            "PDF fetch requires the 'pdf' extra (pip install omnifusion[pdf])"
+        ) from exc
+    import io
+
+    reader = pypdf.PdfReader(io.BytesIO(body))
+    return "\n".join((page.extract_text() or "") for page in reader.pages)
 
 
 def _bounded_text(value: str, max_chars: int) -> str:
@@ -316,8 +335,11 @@ class WebFetcher:
         content_hash = "sha256:" + hashlib.sha256(response.body).hexdigest()
         truncated = len(response.body) > self.max_content_bytes
         bounded_body = response.body[: self.max_content_bytes]
-        decoded = bounded_body.decode("utf-8", errors="replace")
-        cleaned = _clean_html(decoded, mime_type)
+        if mime_type == "application/pdf":
+            cleaned = _extract_pdf_text(bounded_body)
+        else:
+            decoded = bounded_body.decode("utf-8", errors="replace")
+            cleaned = _clean_html(decoded, mime_type)
         excerpt = _bounded_text(cleaned, self.excerpt_chars)
         nonce = self.nonce or new_prompt_nonce()
 
@@ -342,6 +364,9 @@ class WebFetcher:
             "truncated": truncated,
             "cache_hit": False,
         }
+        # Invariant 6: full-page retention is opt-in and off by default.
+        if settings.omnifusion_web_fetch_store_full_page:
+            trace_metadata["full_content"] = cleaned
 
         return WebFetchResult(
             url=requested_url,

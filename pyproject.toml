@@ -24,6 +24,11 @@ dependencies = [
     "uvicorn[standard]>=0.49.0",
 ]
 
+[project.optional-dependencies]
+# Server-side web_fetch of PDFs ('pdf-text' MIME support). Optional so the base
+# install stays lean; fetching a PDF without it fails with a clear message.
+pdf = ["pypdf>=4.0.0"]
+
 [project.scripts]
 omnifusion = "omnifusion.cli:main"
 

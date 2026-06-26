@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     omnifusion_brave_api_key: Optional[SecretStr] = None
     omnifusion_web_fetch_cache_ttl_seconds: float = 300.0
     omnifusion_web_fetch_per_domain_interval_seconds: float = 1.0
+    # Invariant 6: by default traces keep only bounded excerpt metadata. Operators
+    # may opt into persisting the full fetched page body (copyright/privacy cost).
+    omnifusion_web_fetch_store_full_page: bool = False
     omnifusion_conductor_max_repairs: int = 1
 
     # Per-preset opt-in server-side web grounding (panel "web on"). Off by default;
