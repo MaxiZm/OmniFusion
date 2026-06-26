@@ -249,3 +249,36 @@ async def test_recursive_fusion_models_are_blocked_before_litellm(monkeypatch):
 
     assert exc.value.status_code == 400
     assert exc.value.code == "recursive_fusion_model"
+
+
+@pytest.mark.asyncio
+async def test_plugins_override_routes_to_resolved_provider(tmp_path, monkeypatch):
+    """[P2] A plugin model registered under a non-default provider must be routed to
+    that provider in the models pool, not rewritten to 'default'."""
+    import omnifusion.fusion.plugins as plugins_mod
+    from omnifusion.api.schemas import FusionPlugins
+    from omnifusion.fusion.types import Preset, PresetStage
+
+    async def fake_resolve(model):
+        return {"id": "prov-custom"} if model == "special-model" else None
+
+    monkeypatch.setattr(plugins_mod, "resolve_registered_provider_for_model", fake_resolve)
+
+    stage = PresetStage(max_tokens=16, timeout=5)
+    preset = Preset(
+        name="p",
+        strategy="B",
+        panel_models=["panel-a"],
+        panel=stage,
+        judge_model="judge-a",
+        judge=stage,
+        final_model="final-a",
+        final=stage,
+    )
+    updated = await plugins_mod.apply_plugins_override(
+        preset, FusionPlugins(analysis_models=["special-model"])
+    )
+    panel_entries = [m for m in updated.models if m.role == "panel"]
+    assert panel_entries[0].provider_id == "prov-custom"
+    # The pool entry is honored by provider_id_for too.
+    assert updated.provider_id_for("special-model", "panel") == "prov-custom"

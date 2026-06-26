@@ -146,12 +146,20 @@ async def execute_conductor(
     total_cost = 0.0
     stage_names: list[str] = []
 
-    async def call_stage(stage: str, *, model: str, messages: list[dict[str, Any]], max_tokens: int, timeout: int):
+    async def call_stage(
+        stage: str,
+        *,
+        model: str,
+        role: str,
+        messages: list[dict[str, Any]],
+        max_tokens: int,
+        timeout: int,
+    ):
         nonlocal usage_prompt, usage_completion, total_cost
         stage_names.append(stage)
         response = await executor.call(
             stage,
-            provider_id=preset.provider_id_for(model),
+            provider_id=preset.provider_id_for(model, role),
             model=model,
             messages=messages,
             max_tokens=max_tokens,
@@ -166,6 +174,7 @@ async def execute_conductor(
     plan_response = await call_stage(
         "plan",
         model=preset.judge_model,
+        role="judge",
         messages=[
             {
                 "role": "system",
@@ -186,6 +195,7 @@ async def execute_conductor(
             response = await call_stage(
                 f"worker/{model}",
                 model=model,
+                role="panel",
                 messages=[
                     {
                         "role": "system",
@@ -218,6 +228,7 @@ async def execute_conductor(
     verifier_response = await call_stage(
         "verify",
         model=preset.judge_model,
+        role="judge",
         messages=[
             {
                 "role": "user",
@@ -250,6 +261,7 @@ async def execute_conductor(
             repair_response = await call_stage(
                 f"repair/{repair_index + 1}",
                 model=preset.final_model,
+                role="final",
                 messages=[
                     {
                         "role": "user",
@@ -281,6 +293,7 @@ async def execute_conductor(
             reverify_response = await call_stage(
                 f"verify/repair-{repair_index + 1}",
                 model=preset.judge_model,
+                role="judge",
                 messages=[
                     {
                         "role": "user",
@@ -312,6 +325,7 @@ async def execute_conductor(
     merge_response = await call_stage(
         "merge",
         model=preset.final_model,
+        role="final",
         messages=[
             {
                 "role": "user",
@@ -359,7 +373,7 @@ async def execute_conductor(
         preset=preset.name,
         cost_usd=total_cost,
         wall_ms=wall_ms,
-        degraded=False,
+        degraded=repair_degraded,
         panel_results=worker_results,
         judge_analysis=judge_analysis,
         final_answer=final_answer,

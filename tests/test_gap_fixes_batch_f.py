@@ -190,3 +190,5 @@ async def test_conductor_degrades_cleanly_when_repair_errors(tmp_path, monkeypat
     assert response["choices"][0]["message"]["content"] == "merged from unrepaired draft"
     assert trace.metadata["conductor"]["repair_count"] == 0
     assert trace.metadata["conductor"]["repair_degraded"] is True
+    # Top-level trace.degraded must reflect the repair degradation (not stay False).
+    assert trace.degraded is True
