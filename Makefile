@@ -1,4 +1,4 @@
-.PHONY: dev test test-int lint fmt compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-ablation-validate
+.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-ablation-validate
 
 EVAL_CODING_FLAGS :=
 ifeq ($(EVAL_MOCK),1)
@@ -20,6 +20,13 @@ lint:
 
 fmt:
 	uv run ruff format .
+
+install-smoke:
+	uv build
+	uv run omnifusion genkey >/dev/null
+
+security-audit:
+	uvx --from pip-audit pip-audit --strict --progress-spinner off
 
 compose-up:
 	docker compose -f deploy/docker-compose.yml up -d

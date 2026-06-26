@@ -16,5 +16,7 @@ jobs:
       - run: uv sync --locked --group dev
       - run: make lint
       - run: make test
+      - run: make install-smoke
+      - run: make security-audit
       - run: EVAL_MOCK=1 make eval-coding-smoke
       - run: docker build -f deploy/Dockerfile .

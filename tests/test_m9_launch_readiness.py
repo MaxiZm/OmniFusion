@@ -22,9 +22,14 @@ def test_launch_readiness_docs_and_ci_are_present():
         assert Path(file_name).exists(), f"missing {file_name}"
 
     ci = Path(".github/workflows/ci.yml").read_text()
+    makefile = Path("Makefile").read_text()
     assert "make lint" in ci
     assert "make test" in ci
+    assert "make install-smoke" in ci
+    assert "make security-audit" in ci
     assert "docker build" in ci
+    assert "install-smoke:" in makefile
+    assert "security-audit:" in makefile
 
     security = Path("docs/security-model.md").read_text()
     assert "web_fetch" in security
