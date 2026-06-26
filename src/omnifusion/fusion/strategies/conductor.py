@@ -11,6 +11,8 @@ from omnifusion.budget.ledger import initialize_request_budget
 from omnifusion.fusion.judge import extract_json_from_text
 from omnifusion.fusion.runtime.executor import BudgetedExecutor
 from omnifusion.fusion.runtime.response import ResponseShaper
+from omnifusion.fusion.runtime.context import RunContext
+from omnifusion.fusion.runtime.strategy import FusionStrategy
 from omnifusion.fusion.types import (
     FusionTrace,
     JudgeAnalysis,
@@ -20,6 +22,18 @@ from omnifusion.fusion.types import (
 )
 from omnifusion.settings import settings
 from omnifusion.store.runs import save_trace
+
+
+class ConductorStrategy(FusionStrategy):
+    key = "conductor"
+
+    async def execute(self, ctx: RunContext):
+        return await execute_conductor(
+            ctx.run_id,
+            ctx.preset,
+            ctx.request,
+            ctx.key_hash,
+        )
 
 
 def _message_dicts(request: ChatCompletionRequest) -> list[dict[str, Any]]:

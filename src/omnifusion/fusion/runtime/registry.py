@@ -1,19 +1,45 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Iterable
 
-StrategyCallable = Callable[..., Awaitable[object]]
+from .context import RunContext
+from .strategy import FusionStrategy
+
+StrategyCallable = FusionStrategy
 
 
 class StrategyRegistry:
-    def __init__(self):
-        self._keys = {"B", "_tool_step", "conductor"}
+    def __init__(self, strategies: Iterable[FusionStrategy] | None = None):
+        if strategies is None:
+            from ..strategies.classic import ClassicStrategy
+            from ..strategies.conductor import ConductorStrategy
+            from ..strategies.tool_step import ToolStepStrategy
+
+            strategies = [ClassicStrategy(), ToolStepStrategy(), ConductorStrategy()]
+        self._strategies = {strategy.key: strategy for strategy in strategies}
 
     def keys(self) -> tuple[str, ...]:
-        return tuple(sorted(self._keys))
+        return tuple(sorted(self._strategies))
 
     def has(self, key: str) -> bool:
-        return key in self._keys
+        return key in self._strategies
+
+    def register(self, strategy: FusionStrategy) -> None:
+        self._strategies[strategy.key] = strategy
+
+    async def execute(self, run_id, preset, body, key_hash):
+        strategy_key = "_tool_step" if body.tools else preset.strategy
+        strategy = self._strategies.get(strategy_key)
+        if strategy is None:
+            raise ValueError(f"Unknown fusion strategy: {strategy_key}")
+        return await strategy.execute(
+            RunContext(
+                run_id=run_id,
+                preset=preset,
+                request=body,
+                key_hash=key_hash,
+            )
+        )
 
 
 registry = StrategyRegistry()
@@ -38,11 +64,4 @@ async def _execute_conductor(run_id, preset, body, key_hash):
 
 
 async def execute_strategy(run_id, preset, body, key_hash):
-    strategy_key = "_tool_step" if body.tools else preset.strategy
-    if strategy_key == "_tool_step":
-        return await _execute_tool_step(run_id, preset, body, key_hash)
-    if strategy_key == "B":
-        return await _execute_classic(run_id, preset, body, key_hash)
-    if strategy_key == "conductor":
-        return await _execute_conductor(run_id, preset, body, key_hash)
-    raise ValueError(f"Unknown fusion strategy: {strategy_key}")
+    return await registry.execute(run_id, preset, body, key_hash)
