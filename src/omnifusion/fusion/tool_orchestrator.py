@@ -313,8 +313,9 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     await initialize_request_budget(run_id, ceiling_micro_usd)
 
     dict_messages = [m.model_dump(exclude_none=True) for m in body.messages]
-    tools = body.tools
-    tool_choice = body.tool_choice or "auto"
+    body_dict = body.model_dump(exclude_none=True)
+    tools = body_dict.get("tools")
+    tool_choice = body_dict.get("tool_choice", "auto")
 
     # 1. Panel proposes next actions (parallel).
     proposals = await _panel_propose(run_id, preset, dict_messages, tools, tool_choice)

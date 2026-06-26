@@ -90,6 +90,44 @@ app.add_exception_handler(OmniFusionError, omnifusion_error_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 
+def request_body_too_large_response(limit: int) -> JSONResponse:
+    return JSONResponse(
+        status_code=413,
+        content={
+            "error": {
+                "message": f"Request body exceeds maximum allowed size of {limit} bytes.",
+                "type": "invalid_request_error",
+                "param": None,
+                "code": "request_body_too_large",
+            }
+        },
+    )
+
+
+@app.middleware("http")
+async def request_body_size_middleware(request: Request, call_next):
+    limit = settings.omnifusion_max_request_body_bytes
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > limit:
+                return request_body_too_large_response(limit)
+        except ValueError:
+            return request_body_too_large_response(limit)
+
+    if request.method in {"POST", "PUT", "PATCH"} and content_length is None:
+        body = await request.body()
+        if len(body) > limit:
+            return request_body_too_large_response(limit)
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request = Request(request.scope, receive)
+
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def run_id_logging_middleware(request: Request, call_next):
     set_run_id(getattr(request.state, "run_id", None))

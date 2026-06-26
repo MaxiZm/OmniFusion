@@ -326,7 +326,11 @@ async def create_chat_completion(
             if body.model in settings.omnifusion_passthrough_whitelist:
                 extra = None
                 if body.tools:
-                    extra = {"tools": body.tools, "tool_choice": body.tool_choice}
+                    body_dict = body.model_dump(exclude_none=True)
+                    extra = {
+                        "tools": body_dict.get("tools"),
+                        "tool_choice": body_dict.get("tool_choice"),
+                    }
                 result, stream_owns_sem = await _single_model_completion(
                     run_id,
                     body.model,

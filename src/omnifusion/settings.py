@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     omnifusion_max_content_chars: int = 100_000
     omnifusion_max_messages: int = 200
     omnifusion_max_tokens_limit: int = 16_384
+    omnifusion_max_request_body_bytes: int = 1_000_000
+    omnifusion_max_stage_timeout: int = 300
 
     # Budgets
     global_daily_budget_usd: float = 100.0

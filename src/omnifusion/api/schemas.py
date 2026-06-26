@@ -1,6 +1,50 @@
 from typing import List, Optional, Any, Union, Literal
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 from ..settings import settings
+
+
+FUNCTION_NAME_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
+
+
+class OpenAIShape(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    def __getitem__(self, key: str):
+        return getattr(self, key)
+
+
+class FunctionToolSpec(OpenAIShape):
+    name: str = Field(min_length=1, max_length=128, pattern=FUNCTION_NAME_PATTERN)
+    description: Optional[str] = Field(default=None, max_length=4096)
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class ToolDefinition(OpenAIShape):
+    type: Literal["function"]
+    function: FunctionToolSpec
+
+
+class ToolCallFunction(OpenAIShape):
+    name: str = Field(min_length=1, max_length=128, pattern=FUNCTION_NAME_PATTERN)
+    arguments: str
+
+
+class ToolCall(OpenAIShape):
+    id: str = Field(min_length=1, max_length=256)
+    type: Literal["function"]
+    function: ToolCallFunction
+
+
+class ToolChoiceFunctionRef(OpenAIShape):
+    name: str = Field(min_length=1, max_length=128, pattern=FUNCTION_NAME_PATTERN)
+
+
+class FunctionToolChoice(OpenAIShape):
+    type: Literal["function"]
+    function: ToolChoiceFunctionRef
+
+
+ToolChoice = Union[Literal["none", "auto", "required"], FunctionToolChoice]
 
 
 class ChatMessage(BaseModel):
@@ -9,7 +53,7 @@ class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
     content: Optional[str] = None
     # Tool-calling passthrough fields (OpenAI shape) — forwarded to the model.
-    tool_calls: Optional[Any] = None
+    tool_calls: Optional[List[ToolCall]] = None
     tool_call_id: Optional[str] = None
     name: Optional[str] = None
 
@@ -47,8 +91,8 @@ class ChatCompletionRequest(BaseModel):
     user: Optional[str] = None
 
     # We must explicitly reject these with an error
-    tools: Optional[Any] = None
-    tool_choice: Optional[Any] = None
+    tools: Optional[List[ToolDefinition]] = None
+    tool_choice: Optional[ToolChoice] = None
     functions: Optional[Any] = None
     function_call: Optional[Any] = None
     audio: Optional[Any] = None
