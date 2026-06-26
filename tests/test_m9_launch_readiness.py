@@ -13,6 +13,10 @@ def test_docker_compose_binds_localhost_by_default():
 def test_launch_readiness_docs_and_ci_are_present():
     required_files = [
         ".github/workflows/ci.yml",
+        ".github/ISSUE_TEMPLATE/bug_report.md",
+        ".github/ISSUE_TEMPLATE/feature_request.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        "CHANGELOG.md",
         "CONTRIBUTING.md",
         "SECURITY.md",
         "docs/benchmark-reproduction.md",
@@ -49,3 +53,22 @@ def test_launch_readiness_docs_and_ci_are_present():
     assert "transparent approximation" in fugu
     assert "ablation_required" in fugu
     assert "off by default" in fugu
+
+
+def test_readme_has_ci_badge_and_from_readme_walkthrough():
+    readme = Path("README.md").read_text()
+    # Real CI badge wired to the actual workflow.
+    assert "actions/workflows/ci.yml/badge.svg" in readme
+    # The exit-gate 'works FROM README' flow: configure -> create/confirm -> call.
+    assert "omnifusion genkey" in readme
+    assert "preset list" in readme
+    assert "fugu-ultra" in readme
+    assert "/v1/chat/completions" in readme
+    # Links operators to the docs set.
+    assert "docs/quickstart.md" in readme
+
+
+def test_changelog_documents_initial_release():
+    changelog = Path("CHANGELOG.md").read_text()
+    assert "0.1.0" in changelog
+    assert "Keep a Changelog" in changelog
