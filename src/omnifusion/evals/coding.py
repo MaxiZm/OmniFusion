@@ -175,8 +175,9 @@ def build_payload(
     if suite == "coding-full":
         raw["confidence_interval"] = wilson_interval(passed, total)
         raw["cost_normalization"] = {
-            "unit": "usd_per_task",
-            "value": round(total_cost / total, 6) if total else 0.0,
+            "usd_per_task": round(total_cost / total, 6) if total else 0.0,
+            "solve_per_usd": round(passed / total_cost, 6) if total_cost else 0.0,
+            "solve_per_wall_s": round(passed / total_wall, 6) if total_wall else 0.0,
         }
 
     return {
@@ -241,7 +242,9 @@ def render_markdown_report(payload: dict[str, Any]) -> str:
         f"| 95% CI | {ci_text} |",
         f"| Total cost USD | {raw['total_cost_usd']:.6f} |",
         f"| Total wall time s | {raw['total_wall_time_s']:.3f} |",
-        f"| Cost normalized | {cost_norm.get('value', 0.0):.6f} {cost_norm.get('unit', 'n/a')} |",
+        f"| usd_per_task | {cost_norm.get('usd_per_task', 0.0):.6f} |",
+        f"| solve_per_usd | {cost_norm.get('solve_per_usd', 0.0):.6f} |",
+        f"| solve_per_wall_s | {cost_norm.get('solve_per_wall_s', 0.0):.6f} |",
         "",
     ]
     if payload["driver"] == "mock-contract":

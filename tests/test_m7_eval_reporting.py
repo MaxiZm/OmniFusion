@@ -37,6 +37,9 @@ def test_eval_coding_full_emits_jsonl_and_markdown_reports(tmp_path):
         "jsonl": str(jsonl_path),
         "markdown": str(markdown_path),
     }
+    assert {"usd_per_task", "solve_per_usd", "solve_per_wall_s"} <= set(
+        payload["raw"]["cost_normalization"]
+    )
     assert jsonl_path.exists()
     assert markdown_path.exists()
 
@@ -49,4 +52,6 @@ def test_eval_coding_full_emits_jsonl_and_markdown_reports(tmp_path):
     assert "# OmniFusion Coding Full Report" in markdown
     assert "95% CI" in markdown
     assert "usd_per_task" in markdown
+    assert "solve_per_usd" in markdown
+    assert "solve_per_wall_s" in markdown
     assert "Mock outputs are not benchmark evidence." in markdown
