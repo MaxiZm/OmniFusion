@@ -20,9 +20,25 @@
   },
   "component": null,
   "date": null,
-  "failure_modes": {},
+  "failure_modes": {
+    "<failure_mode_name>": {
+      "strategy": null,
+      "best_single": null,
+      "judge_selected_best_of_n": null
+    }
+  },
+  "model": null,
   "pricing": null,
-  "runs": [],
+  "provider": null,
+  "runs": [
+    {
+      "model": null,
+      "provider": null,
+      "solve_rate": null,
+      "solve_per_usd": null,
+      "solve_per_wall_s": null
+    }
+  ],
   "status": "template_not_run",
   "strategy": null,
   "tier": null

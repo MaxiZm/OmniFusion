@@ -239,35 +239,75 @@ async def execute_conductor(
     )
 
     repair_texts: list[str] = []
+    repair_degraded = False
     needs_repair = bool(verifier_data.get("needs_repair", False))
     repair_instructions = str(verifier_data.get("repair_instructions", "") or "")
     max_repairs = max(0, int(settings.omnifusion_conductor_max_repairs))
     for repair_index in range(max_repairs):
         if not needs_repair:
             break
-        repair_response = await call_stage(
-            f"repair/{repair_index + 1}",
-            model=preset.final_model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Repair the draft using these verifier instructions:\n\n"
-                        f"{repair_instructions}\n\n"
-                        + _render_artifacts(
-                            plan=plan,
-                            worker_results=worker_results,
-                            verifier_text=verifier_text,
-                            repair_texts=repair_texts,
-                        )
-                    ),
-                }
-            ],
-            max_tokens=preset.final.max_tokens,
-            timeout=preset.final.timeout,
-        )
+        try:
+            repair_response = await call_stage(
+                f"repair/{repair_index + 1}",
+                model=preset.final_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Repair the draft using these verifier instructions:\n\n"
+                            f"{repair_instructions}\n\n"
+                            + _render_artifacts(
+                                plan=plan,
+                                worker_results=worker_results,
+                                verifier_text=verifier_text,
+                                repair_texts=repair_texts,
+                            )
+                        ),
+                    }
+                ],
+                max_tokens=preset.final.max_tokens,
+                timeout=preset.final.timeout,
+            )
+        except Exception:
+            # Degrade cleanly: keep the prior (unrepaired) draft and merge it
+            # rather than failing the whole run when a repair stage errors.
+            repair_degraded = True
+            break
         repair_texts.append(_response_text(repair_response))
-        needs_repair = False
+
+        # Honor omnifusion_conductor_max_repairs: re-run the verifier on the
+        # repaired draft to decide whether another bounded repair is warranted.
+        if repair_index + 1 < max_repairs:
+            reverify_response = await call_stage(
+                f"verify/repair-{repair_index + 1}",
+                model=preset.judge_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Re-verify the repaired draft. Return JSON with consensus, "
+                            "contradictions, synthesis_plan, needs_repair, and "
+                            "repair_instructions.\n\n"
+                            + _render_artifacts(
+                                plan=plan,
+                                worker_results=worker_results,
+                                verifier_text=verifier_text,
+                                repair_texts=repair_texts,
+                            )
+                        ),
+                    }
+                ],
+                max_tokens=preset.judge.max_tokens,
+                timeout=preset.judge.timeout,
+            )
+            _, reverify_data = _judge_analysis_from_verifier(
+                _response_text(reverify_response),
+                _usage_tokens(reverify_response),
+            )
+            needs_repair = bool(reverify_data.get("needs_repair", False))
+            repair_instructions = str(reverify_data.get("repair_instructions", "") or "")
+        else:
+            needs_repair = False
 
     merge_response = await call_stage(
         "merge",
@@ -311,6 +351,7 @@ async def execute_conductor(
         "stages": stage_names,
         "repair_count": len(repair_texts),
         "verifier_requested_repair": bool(verifier_data.get("needs_repair", False)),
+        "repair_degraded": repair_degraded,
     }
     metadata["artifacts"] = artifacts.to_trace_metadata()
     trace = FusionTrace(

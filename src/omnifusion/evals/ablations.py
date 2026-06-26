@@ -27,16 +27,46 @@ def validate_ablation_artifact(artifact: dict[str, Any]) -> list[str]:
     if artifact.get("ci_method") != "bootstrap":
         errors.append("ci_method must be bootstrap")
 
-    for field in ("strategy", "component", "date", "commit_sha", "pricing"):
+    # Dated-artifact provenance the M6 plan requires verbatim: model versions,
+    # provider, date, pricing, commit hash.
+    for field in ("strategy", "component", "model", "provider", "date", "commit_sha", "pricing"):
         if not artifact.get(field):
             errors.append(f"missing required field: {field}")
 
-    if not isinstance(artifact.get("failure_modes"), dict) or not artifact["failure_modes"]:
+    failure_modes = artifact.get("failure_modes")
+    if not isinstance(failure_modes, dict) or not failure_modes:
         errors.append("artifact must include failure_modes breakdown")
+    else:
+        # Each mode must carry a per-baseline strategy-vs-baseline breakdown, not a
+        # placeholder scalar.
+        for mode, breakdown in failure_modes.items():
+            if not isinstance(breakdown, dict):
+                errors.append(f"failure_modes[{mode}] must be a per-baseline breakdown object")
+                continue
+            if "strategy" not in breakdown:
+                errors.append(f"failure_modes[{mode}] must include a 'strategy' count")
+            if not any(baseline in breakdown for baseline in REQUIRED_BASELINES):
+                errors.append(
+                    f"failure_modes[{mode}] must include at least one baseline count"
+                )
 
     runs = artifact.get("runs")
     if not isinstance(runs, list) or len(runs) < 3:
         errors.append("artifact must include at least 3 real-provider runs")
+    else:
+        # Each run must carry its own provenance (model/provider) plus raw numbers.
+        for index, run in enumerate(runs):
+            if not isinstance(run, dict):
+                errors.append(f"runs[{index}] must be an object with model/provider/raw metrics")
+                continue
+            for run_field in ("model", "provider"):
+                if not run.get(run_field):
+                    errors.append(f"runs[{index}] missing {run_field}")
+            if not any(
+                _is_number(run.get(metric))
+                for metric in ("solve_per_usd", "solve_per_wall_s", "solve_rate")
+            ):
+                errors.append(f"runs[{index}] missing a raw numeric metric")
 
     comparisons = artifact.get("comparisons")
     if not isinstance(comparisons, dict):

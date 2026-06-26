@@ -1,22 +1,34 @@
 import json
 
 
+def _run(idx):
+    return {
+        "id": f"run-{idx}",
+        "model": "deepseek-v4-pro",
+        "provider": "deepseek",
+        "raw_artifact": f"evals/coding/runs/run-{idx}.json",
+        "solve_rate": 0.42,
+        "solve_per_usd": 1.1,
+        "solve_per_wall_s": 0.02,
+    }
+
+
 def valid_artifact():
     return {
         "strategy": "conductor",
         "component": "planner",
         "status": "candidate_default",
         "tier": "C",
+        "model": "deepseek-v4-pro",
+        "provider": "deepseek",
         "date": "2026-06-26",
         "ci_method": "bootstrap",
         "commit_sha": "abcdef1",
-        "failure_modes": {"syntax_error": {"strategy": 0, "best_single": 1}},
+        "failure_modes": {
+            "syntax_error": {"strategy": 0, "best_single": 1, "judge_selected_best_of_n": 1}
+        },
         "pricing": {"currency": "USD", "source": "provider-published"},
-        "runs": [
-            {"id": "run-1", "raw_artifact": "evals/coding/runs/run-1.json"},
-            {"id": "run-2", "raw_artifact": "evals/coding/runs/run-2.json"},
-            {"id": "run-3", "raw_artifact": "evals/coding/runs/run-3.json"},
-        ],
+        "runs": [_run(1), _run(2), _run(3)],
         "comparisons": {
             "best_single": {
                 "cost_budget_equal": True,
