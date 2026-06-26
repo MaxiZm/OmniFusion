@@ -177,6 +177,17 @@ def test_admin_template_directory_uses_package_resources():
     assert (template_dir / "login.html").exists()
 
 
+def test_dockerfile_installs_dependencies_before_project():
+    dockerfile = Path("deploy/Dockerfile").read_text()
+    assert "RUN uv sync --locked --no-dev --no-install-project" in dockerfile
+    assert "COPY . ." in dockerfile
+    dependency_sync_index = dockerfile.index("RUN uv sync --locked --no-dev --no-install-project")
+    copy_source_index = dockerfile.index("COPY . .")
+    project_sync_index = dockerfile.index("RUN uv sync --locked --no-dev", copy_source_index)
+    assert dependency_sync_index < copy_source_index < project_sync_index
+    assert "omnifusion.main:app" in dockerfile
+
+
 class ReplayDelta:
     def __init__(self, content: str):
         self.content = content
