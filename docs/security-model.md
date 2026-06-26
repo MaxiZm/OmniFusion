@@ -21,8 +21,21 @@ truncation status in traces. `OMNIFUSION_ALLOW_PRIVATE_EGRESS=1` permits private
 egress for operator-controlled deployments, but cloud metadata endpoints remain
 blocked.
 
+When web grounding is enabled (preset `web_enabled` or `plugins.web`), search and
+fetched content is folded into the panel context only inside nonce-delimited
+fences framed as untrusted data, never as instructions, so a poisoned page cannot
+redirect the run. Full pages are never persisted by default — only bounded
+excerpt metadata is kept (Invariant 6).
+
 Operators are responsible for respecting robots policies, source terms, and
 their own network boundaries.
+
+## Judge Determinism
+
+The internal judge runs at temperature 0 by default for deterministic, reproducible
+fusion. `OMNIFUSION_EXPERIMENTAL_JUDGE_TEMPERATURE` can override this but is flagged
+**unsafe**: a nonzero judge temperature makes fusion non-deterministic and should be
+used only for experimentation, never in production.
 
 ## Benchmark Claims
 

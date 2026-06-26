@@ -73,4 +73,8 @@ async def apply_plugins_override(preset: Preset, plugins: FusionPlugins | None) 
             "models": _role_models(panel_models, preset.judge_model, final_model),
         }
     )
+    # Precedence: request `plugins.web` overrides the preset's web setting for this
+    # request only (M5 plugins-mapping contract).
+    if plugins.web is not None:
+        data["web_enabled"] = plugins.web
     return Preset.model_validate(data)

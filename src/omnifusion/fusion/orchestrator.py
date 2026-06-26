@@ -66,6 +66,15 @@ def _final_result_cost(final_result) -> float:
     )
 
 
+def _trace_metadata(preset, web_sources) -> dict:
+    """Preset trace metadata, plus bounded web-source attribution when web grounding
+    ran (Invariant 6: URL/title/hash/excerpt only — never the full page)."""
+    metadata = trace_metadata_for_preset(preset)
+    if web_sources:
+        metadata["web_sources"] = web_sources
+    return metadata
+
+
 async def run_fusion(
     run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
 ):
@@ -90,13 +99,29 @@ async def run_fusion_classic(
     panel_results = []
     judge_analysis = None
     degraded = False
+    web_sources = []
 
     try:
-        # 2. Run Panel
+        # 1b. Server-side web grounding ("web on"). Opt-in per preset / plugins.web.
+        # Untrusted, fenced, attributed; each web call is its own budget stage.
+        panel_messages = request.messages
+        if getattr(preset, "web_enabled", False):
+            from .web_grounding import gather_web_context, inject_grounding, latest_user_text
+
+            web_context = await gather_web_context(
+                run_id, latest_user_text(request.messages)
+            )
+            web_sources = web_context.sources
+            if web_context.has_grounding:
+                panel_messages = inject_grounding(
+                    request.messages, web_context.grounding_text
+                )
+
+        # 2. Run Panel (on the web-grounded messages when enabled)
         panel_results = await run_panel(
             run_id,
             preset,
-            request.messages,
+            panel_messages,
             min_success=preset.min_panel_success
             if hasattr(preset, "min_panel_success")
             else 1,
@@ -155,7 +180,7 @@ async def run_fusion_classic(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=best_panel.content,
-                        metadata=trace_metadata_for_preset(preset),
+                        metadata=_trace_metadata(preset, web_sources),
                     )
                     await save_trace(trace, request.store, key_hash)
                     return final_response_dict
@@ -230,7 +255,7 @@ async def run_fusion_classic(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=completion_text,
-                        metadata=trace_metadata_for_preset(preset),
+                        metadata=_trace_metadata(preset, web_sources),
                     )
                     await save_trace(trace, request.store, key_hash)
 
@@ -258,7 +283,7 @@ async def run_fusion_classic(
                 panel_results=panel_results,
                 judge_analysis=judge_analysis,
                 final_answer=content,
-                metadata=trace_metadata_for_preset(preset),
+                metadata=_trace_metadata(preset, web_sources),
             )
             await save_trace(trace, request.store, key_hash)
 
@@ -287,7 +312,7 @@ async def run_fusion_classic(
             panel_results=panel_results,
             judge_analysis=judge_analysis,
             final_answer=None,
-            metadata=trace_metadata_for_preset(preset),
+            metadata=_trace_metadata(preset, web_sources),
         )
         await save_trace(trace, request.store, key_hash)
         raise outer_err

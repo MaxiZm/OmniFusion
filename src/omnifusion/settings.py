@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     omnifusion_web_fetch_per_domain_interval_seconds: float = 1.0
     omnifusion_conductor_max_repairs: int = 1
 
+    # Per-preset opt-in server-side web grounding (panel "web on"). Off by default;
+    # request `plugins.web` overrides the preset for a single request (M5).
+    omnifusion_web_grounding_max_results: int = 5
+    omnifusion_web_grounding_fetch_top: int = 2
+
+    # Judge determinism policy (M5 / OpenRouter parity): the judge call forces
+    # temperature 0 unless this documented, off-by-default knob is set. Flagged
+    # UNSAFE — a nonzero judge temperature makes fusion non-deterministic and is
+    # for experimentation only.
+    omnifusion_experimental_judge_temperature: Optional[float] = None
+
     # DB
     db_path: str = "data/omnifusion.db"
 

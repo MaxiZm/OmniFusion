@@ -4,6 +4,7 @@ from typing import List, Optional
 from .types import Preset, PanelResult, JudgeAnalysis
 from .runtime.executor import BudgetedExecutor
 from .prompts import render_judge_prompt
+from ..settings import settings
 
 
 def _strip_trailing_commas(s: str) -> str:
@@ -201,9 +202,15 @@ async def run_judge(
         # V4, OpenAI, Groq, OpenRouter, Ollama, LM Studio). llm/client.filter_params()
         # drops response_format for providers that don't support it (anthropic,
         # gemini), and the explicit retry below covers any model that rejects it.
+        # OpenRouter parity: the judge is deterministic (temperature 0) regardless of
+        # the caller's temperature, UNLESS the documented, off-by-default experimental
+        # knob overrides it (flagged unsafe — it makes fusion non-deterministic).
+        judge_temperature = settings.omnifusion_experimental_judge_temperature
+        if judge_temperature is None:
+            judge_temperature = 0
         kwargs = {
             "timeout": preset.judge.timeout,
-            "temperature": 0,
+            "temperature": judge_temperature,
             "response_format": {"type": "json_object"},
         }
 

@@ -81,6 +81,9 @@ class PresetV2(BaseModel):
     on_final_failure: Literal["error", "best_panel"] = "error"
     min_panel_success: int = 1
     compat_status: Optional[str] = None
+    # Server-side web grounding for the panel ("web on"). Opt-in per preset; a
+    # request's `plugins.web` overrides this for a single request (M5).
+    web_enabled: bool = False
 
     @model_validator(mode="before")
     @classmethod

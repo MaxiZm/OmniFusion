@@ -83,3 +83,72 @@ async def test_run_judge_parses_extended_structured_fields(monkeypatch):
     assert analysis.blind_spots == "missing edge"
     assert analysis.model_strengths == {"MODEL_A": "fast"}
     assert analysis.synthesis_plan == "merge carefully"
+
+
+@pytest.mark.asyncio
+async def test_run_judge_forces_temperature_zero_ignoring_caller(monkeypatch):
+    """The default judge determinism policy forces temp 0 even if a caller would
+    prefer otherwise — the knob below is the only documented escape hatch."""
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+
+    class FakeResponse:
+        class _C:
+            class message:  # noqa: N801 - mimic litellm shape
+                content = "{}"
+
+        choices = [_C()]
+        usage = None
+        _omnifusion_cost_usd = 0.0
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+    monkeypatch.setattr(
+        judge_mod.settings, "omnifusion_experimental_judge_temperature", None
+    )
+
+    await judge_mod.run_judge(
+        "run-judge-default",
+        preset(),
+        [{"role": "user", "content": "q"}],
+        [PanelResult(model="panel-a", status="ok", content="a")],
+    )
+    assert captured["temperature"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_judge_honors_experimental_temperature_override(monkeypatch):
+    """The documented, off-by-default experimental knob overrides the temp-0 policy."""
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+
+    class FakeResponse:
+        class _C:
+            class message:  # noqa: N801 - mimic litellm shape
+                content = "{}"
+
+        choices = [_C()]
+        usage = None
+        _omnifusion_cost_usd = 0.0
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+    monkeypatch.setattr(
+        judge_mod.settings, "omnifusion_experimental_judge_temperature", 0.7
+    )
+
+    await judge_mod.run_judge(
+        "run-judge-override",
+        preset(),
+        [{"role": "user", "content": "q"}],
+        [PanelResult(model="panel-a", status="ok", content="a")],
+    )
+    assert captured["temperature"] == 0.7

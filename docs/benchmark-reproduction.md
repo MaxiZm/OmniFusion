@@ -15,6 +15,20 @@ EVAL_MOCK=1 make eval-coding-smoke
 This command should print raw pass/fail, cost, and wall time. A zero-pass mock
 run is acceptable because the mock path does not call a model or edit files.
 
+### Tool-Calling Micro-Bench
+
+Aider owns the coding-edit loop but does not isolate the tool-selection decision
+OmniFusion fuses on the agentic path. The thin internal tool micro-bench covers
+that case (no off-the-shelf client fits). It scores tool-name and argument
+correctness against the live endpoint:
+
+```bash
+EVAL_MOCK=1 make eval-tool-smoke   # Tier A contract check (deterministic)
+make eval-tool-smoke               # Tier C probe against a running instance
+```
+
+Like the coding smoke, output is raw pass/fail + cost + wall-time with no CIs.
+
 ## Real Provider Full Run
 
 Tier C evidence requires live providers, a configured OmniFusion server, and an

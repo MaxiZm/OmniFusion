@@ -57,5 +57,14 @@ redacted in trace metadata.
 ## Search And Web Tools
 
 `web_fetch` is built in and hardened by default. `web_search` is selected through
-the search provider adapter settings and supports SearXNG, Tavily, Brave, or a
-custom operator-provided endpoint. Web tools remain opt-in per preset/request.
+the search provider adapter settings (`OMNIFUSION_WEB_SEARCH_PROVIDER`) and
+supports SearXNG (self-host default), Tavily, Brave, or a custom operator-provided
+endpoint.
+
+Web grounding is opt-in. Set `web_enabled: true` on a preset to make every request
+to that preset run a server-side search before the panel ("web on"); callers can
+override per request with the `plugins.web` flag. When enabled, search results
+(and bounded fetched excerpts for the top results) are injected into the panel
+context as untrusted, fenced, attributed reference data, and each web call is
+budgeted as its own stage. Tune breadth with
+`OMNIFUSION_WEB_GROUNDING_MAX_RESULTS` and `OMNIFUSION_WEB_GROUNDING_FETCH_TOP`.

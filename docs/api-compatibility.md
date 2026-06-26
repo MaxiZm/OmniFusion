@@ -10,6 +10,15 @@ OmniFusion exposes OpenAI-compatible routes under both `/v1` and `/api/v1`.
 - Legacy `functions` and `function_call` normalize to `tools` and `tool_choice`.
 - Text content-part arrays are accepted; non-text parts are rejected.
 
+### Judge Determinism
+
+For OpenRouter parity the internal judge call is deterministic: it always runs at
+temperature 0 regardless of the caller's `temperature` (which still flows to the
+panel and synthesis). The documented, off-by-default
+`OMNIFUSION_EXPERIMENTAL_JUDGE_TEMPERATURE` knob overrides this; it is flagged
+**unsafe** because a nonzero judge temperature makes fusion non-deterministic and
+exists only for experimentation.
+
 ## Model Aliases
 
 - `openrouter/fusion` aliases to `fusion/general` by default.
@@ -38,6 +47,17 @@ Fusion model references such as `openrouter/fusion`, `openrouter:fusion`, and
 recursive fusion.
 
 ## Web Tools
+
+Server-side web grounding ("panel with web on") is opt-in: enable it per preset
+with `web_enabled: true`, or per request with `plugins.web` (which overrides the
+preset for that request only). When enabled, OmniFusion runs a bounded
+`web_search` for the latest user turn before the panel, optionally fetches the
+top results with `web_fetch`, and folds the untrusted, fenced, attributed results
+into the panel context as a system turn. Each web call is accounted as its own
+budget stage (`web_search`, `web_fetch/<n>`), and web grounding is strictly
+additive — any web failure degrades to no/partial grounding rather than failing
+the run. Bounded source attribution (URL, title, content hash, excerpt) is
+recorded in the trace under `web_sources`.
 
 `web_fetch` accepts only `http` and `https` URLs. It blocks cloud metadata,
 loopback, private, link-local, multicast, reserved, and unspecified egress unless
