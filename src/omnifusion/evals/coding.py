@@ -230,9 +230,18 @@ def build_payload(
             "solve_per_wall_s": round(passed / total_wall, 6) if total_wall else 0.0,
         }
 
+    # A mocked run is never Tier C evidence — label it so automation can't consume
+    # mock output as a real-provider benchmark (Invariant 1).
+    if mock:
+        tier = "mock"
+    elif suite == "coding-full":
+        tier = "C"
+    else:
+        tier = "smoke"
+
     return {
         "suite": suite,
-        "tier": "C" if suite == "coding-full" else "smoke",
+        "tier": tier,
         "driver": "mock-contract" if mock else "aider",
         "aider_chat_version": config["aider_chat_version"],
         "model": config["model"],
@@ -358,6 +367,18 @@ def run_suite(args: argparse.Namespace) -> int:
         f"{suite_name}: {raw['passed']}/{raw['total']} passed, "
         f"${raw['total_cost_usd']:.6f}, {raw['total_wall_time_s']:.3f}s"
     )
+
+    # Optional quality gate: when --fail-under is set on a real (non-mock) run, exit
+    # non-zero if the pass rate is below the threshold. Mock runs are contract checks
+    # that legitimately pass 0 tasks, so the gate never applies to them.
+    fail_under = getattr(args, "fail_under", None)
+    if fail_under is not None and not args.mock and raw["pass_rate"] < fail_under:
+        print(
+            f"{suite_name}: pass rate {raw['pass_rate']:.4f} is below --fail-under "
+            f"{fail_under:.4f}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -376,6 +397,12 @@ def build_parser() -> argparse.ArgumentParser:
         subparser.add_argument("--output", type=Path, default=output_path)
         subparser.add_argument("--mock", action="store_true")
         subparser.add_argument("--timeout-s", type=int, default=600)
+        subparser.add_argument(
+            "--fail-under",
+            type=float,
+            default=None,
+            help="Exit non-zero on a real run whose pass rate is below this threshold.",
+        )
         subparser.set_defaults(func=run_suite)
 
     return parser

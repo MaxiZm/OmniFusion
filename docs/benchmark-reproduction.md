@@ -42,6 +42,12 @@ The full run writes JSON, JSONL, and Markdown reports under `evals/coding/runs/`
 Promote only intentional, dated provider evidence into
 `evals/coding/baselines/`.
 
+Mocked runs are machine-labeled `"tier": "mock"` (never `"C"`) so automation cannot
+mistake them for real-provider evidence. To use a real run as a CI quality gate,
+pass `--fail-under <rate>`; the command then exits non-zero when the pass rate is
+below the threshold (the flag is ignored for mock runs, which legitimately pass 0
+tasks).
+
 ## Required Baselines
 
 No default strategy or Fugu-compatible preset may be enabled from mocked output.
