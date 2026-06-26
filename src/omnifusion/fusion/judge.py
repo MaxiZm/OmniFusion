@@ -183,7 +183,12 @@ async def run_judge(
         label = f"MODEL_{chr(65 + idx)}"  # MODEL_A, MODEL_B, etc.
         panel_answers[label] = res.content
 
-    prompt = render_judge_prompt(user_prompt, panel_answers, run_id)
+    prompt = render_judge_prompt(
+        user_prompt,
+        panel_answers,
+        run_id,
+        prompt_config=getattr(preset, "prompts", None),
+    )
 
     judge_messages = [{"role": "user", "content": prompt}]
 

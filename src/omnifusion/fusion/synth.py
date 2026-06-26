@@ -22,7 +22,12 @@ async def run_synthesis(
     # 2. Render system content using prompts template
     from .prompts import render_final_prompt
 
-    system_content = render_final_prompt(panel_answers, judge_analysis, run_id)
+    system_content = render_final_prompt(
+        panel_answers,
+        judge_analysis,
+        run_id,
+        prompt_config=getattr(preset, "prompts", None),
+    )
 
     # 3. Assemble messages, preserving original history.
     # If the user sent a system message, merge it into the synthesis system prompt

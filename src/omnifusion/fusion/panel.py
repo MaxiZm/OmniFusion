@@ -1,6 +1,6 @@
 import asyncio
 from typing import List
-from .types import Preset, PanelResult
+from .types import Preset, PanelResult, role_prompt_content
 from ..api.errors import InsufficientPanelError, BudgetExceededError
 from .runtime.executor import BudgetedExecutor
 
@@ -13,6 +13,9 @@ async def run_panelist(
         m.model_dump(exclude_none=True) if hasattr(m, "model_dump") else m
         for m in messages
     ]
+    role_prompt = role_prompt_content(preset, "panel")
+    if role_prompt:
+        dict_messages = [{"role": "system", "content": role_prompt}, *dict_messages]
 
     result = PanelResult(model=model, status="error")
 
