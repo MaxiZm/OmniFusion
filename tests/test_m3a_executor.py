@@ -126,3 +126,23 @@ async def test_budgeted_executor_stream_reconciles_once_on_close(monkeypatch):
 
     assert len(reconciles) == 1
     assert reconciles[0][1] > 0
+
+
+def test_tool_orchestrator_owns_no_direct_reconcile_shield():
+    """M3a single-shield invariant: tool orchestration must route every model call
+    through BudgetedExecutor, never run its own reserve/reconcile path."""
+    import omnifusion.fusion.tool_orchestrator as tool_mod
+
+    # The direct budget-ledger and llm_client handles are no longer imported into
+    # the tool orchestrator namespace — only the executor owns reconciliation.
+    assert not hasattr(tool_mod, "reserve_budget")
+    assert not hasattr(tool_mod, "reconcile_budget")
+    assert not hasattr(tool_mod, "llm_client")
+    assert hasattr(tool_mod, "BudgetedExecutor")
+
+    import inspect
+
+    source = inspect.getsource(tool_mod)
+    # No stray reconcile_budget / reserve_budget calls survive in the source.
+    assert "reconcile_budget(" not in source
+    assert "reserve_budget(" not in source

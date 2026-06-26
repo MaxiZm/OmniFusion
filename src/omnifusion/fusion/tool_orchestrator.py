@@ -31,18 +31,13 @@ from typing import Optional
 from fastapi.responses import StreamingResponse
 
 from .types import Preset, PanelResult, JudgeAnalysis, trace_metadata_for_preset
-from ..llm.client import llm_client
-from ..budget.ledger import (
-    initialize_request_budget,
-    reserve_budget,
-    reconcile_budget,
-)
-from ..providers.pricing import calculate_actual_cost, estimate_call_cost, usd_to_micro
+from ..budget.ledger import initialize_request_budget
 from ..api.errors import InsufficientPanelError
 from ..api.schemas import ChatCompletionRequest
 from ..api.sse import wants_usage, usage_chunk_sse
 from .judge import run_judge, extract_json_from_text
 from .synth import run_synthesis
+from .runtime.executor import BudgetedExecutor
 from .types import FusionTrace
 from ..store.runs import save_trace
 
@@ -119,14 +114,14 @@ def _usage_tokens(usage) -> tuple:
 async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
     """Each panel model proposes its next action (tool call or text), in parallel."""
 
+    executor = BudgetedExecutor(run_id)
+
     async def one(model):
-        cost = estimate_call_cost(model, dict_messages, preset.panel.max_tokens)
-        reservation_id = await reserve_budget(
-            run_id, f"tool-panel/{model}", max(1, int(cost * 1_000_000))
-        )
-        actual = 0.0
+        # Reserve/reconcile is owned by the executor (M3a single-shield invariant):
+        # tool orchestration must not run a second model-call reconciliation path.
         try:
-            resp = await llm_client.acompletion(
+            resp = await executor.call(
+                f"tool-panel/{model}",
                 provider_id="default",
                 model=model,
                 messages=dict_messages,
@@ -136,7 +131,7 @@ async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
                 timeout=preset.panel.timeout,
                 **_disable_thinking_kwargs(model),
             )
-            actual = calculate_actual_cost(resp, model)
+            actual = getattr(resp, "_omnifusion_cost_usd", 0.0)
             msg = resp.choices[0].message
             pt, ct = _usage_tokens(getattr(resp, "usage", None))
             return {
@@ -151,8 +146,6 @@ async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
         except Exception as e:
             logger.warning(f"tool-panel {model} failed to propose: {e}")
             return {"model": model, "ok": False, "error": str(e), "cost": 0.0}
-        finally:
-            await asyncio.shield(reconcile_budget(reservation_id, usd_to_micro(actual)))
 
     tasks = [one(m) for m in preset.panel_models[:8]]
     return await asyncio.gather(*tasks)
@@ -206,38 +199,41 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
     )
 
     messages = [{"role": "user", "content": judge_prompt}]
-    cost = estimate_call_cost(preset.judge_model, messages, preset.judge.max_tokens)
-    reservation_id = await reserve_budget(
-        run_id, "tool-judge", max(1, int(cost * 1_000_000))
-    )
-    actual = 0.0
+    executor = BudgetedExecutor(run_id)
     try:
         # Request JSON mode; if a model rejects it, retry without (the extractor is
         # robust either way). filter_params drops it for providers that don't support it.
+        # Reserve/reconcile is owned by the executor (M3a single-shield invariant).
         kwargs = {
             "timeout": preset.judge.timeout,
-            "max_tokens": preset.judge.max_tokens,
             "response_format": {"type": "json_object"},
             **_disable_thinking_kwargs(preset.judge_model),
         }
         try:
-            resp = await llm_client.acompletion(
-                provider_id="default", model=preset.judge_model, messages=messages, **kwargs
+            resp = await executor.call(
+                "tool-judge",
+                provider_id="default",
+                model=preset.judge_model,
+                messages=messages,
+                max_tokens=preset.judge.max_tokens,
+                **kwargs,
             )
         except Exception:
             kwargs.pop("response_format", None)
-            resp = await llm_client.acompletion(
-                provider_id="default", model=preset.judge_model, messages=messages, **kwargs
+            resp = await executor.call(
+                "tool-judge",
+                provider_id="default",
+                model=preset.judge_model,
+                messages=messages,
+                max_tokens=preset.judge.max_tokens,
+                **kwargs,
             )
-        actual = calculate_actual_cost(resp, preset.judge_model)
         data = extract_json_from_text(resp.choices[0].message.content)
         decision = data.get("decision", "tool")
         best_index = int(data.get("best_index", 0))
     except Exception as e:
         logger.warning(f"tool-judge failed, defaulting to first tool proposal: {e}")
         decision, best_index = "tool", 0
-    finally:
-        await asyncio.shield(reconcile_budget(reservation_id, usd_to_micro(actual)))
 
     # Validate index and that the chosen proposal actually has a tool call.
     if best_index < 0 or best_index >= len(ok_proposals):

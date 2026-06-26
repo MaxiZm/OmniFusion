@@ -411,8 +411,10 @@ async def save_preset_route(
 ):
     public_strategies = [key for key in strategy_registry.keys() if not key.startswith("_")]
     if strategy not in public_strategies:
+        available = ", ".join(public_strategies)
         return HTMLResponse(
-            "<div class='alert alert-danger'>Only Strategy B is currently implemented.</div>",
+            f"<div class='alert alert-danger'>Unknown strategy '{strategy}'. "
+            f"Available strategies: {available}.</div>",
             status_code=400,
         )
 
