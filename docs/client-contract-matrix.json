@@ -10,11 +10,11 @@
   ],
   "pins": {
     "aider": "aider-chat==0.86.2",
-    "continue": "OpenAI-compatible provider mode, version pin pending first scripted harness",
+    "continue": "Continue VS Code extension 2.1.0, OpenAI-compatible provider mode",
     "cursor-openai-compat": "manual OpenAI-compatible provider mode",
-    "openai-node": "OpenAI-compatible HTTP contract, SDK pin pending node harness",
-    "openai-python": "openai>=2.42.0",
-    "opencode": "OpenAI-compatible provider mode, version pin pending first scripted harness"
+    "openai-node": "openai@6.45.0",
+    "openai-python": "openai==2.42.0",
+    "opencode": "opencode-ai@1.17.11"
   },
   "matrix": {
     "aider": {

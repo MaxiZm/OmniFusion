@@ -25,6 +25,8 @@ def test_client_contract_matrix_has_no_unclassified_cells():
     matrix = json.loads(Path("docs/client-contract-matrix.json").read_text())
 
     assert set(matrix["clients"]) == REQUIRED_CLIENTS
+    for client, pin in matrix["pins"].items():
+        assert "pending" not in pin.lower(), f"{client} pin is pending"
     for client, cells in matrix["matrix"].items():
         assert set(cells) == REQUIRED_CELLS
         for cell, result in cells.items():
