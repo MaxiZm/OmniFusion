@@ -5,6 +5,7 @@ from .settings import settings, validate_startup_security
 from .api.chat import router as chat_router
 from .api.traces import router as traces_router
 from .api.models import router as models_router
+from .api.responses import router as responses_router
 from .admin.routes import router as admin_router
 from .api.errors import (
     OmniFusionError,
@@ -168,9 +169,11 @@ async def validation_exception_handler(request, exc: RequestValidationError):
 app.include_router(chat_router, prefix="/v1")
 app.include_router(traces_router, prefix="/v1")
 app.include_router(models_router, prefix="/v1")
+app.include_router(responses_router, prefix="/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(traces_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
+app.include_router(responses_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/admin")
 
 
