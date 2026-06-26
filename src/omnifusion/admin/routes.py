@@ -22,6 +22,7 @@ from ..store.providers import (
 )
 from ..store.presets import list_presets, save_preset, delete_preset
 from ..fusion.types import Preset, PresetStage
+from ..fusion.runtime.registry import registry as strategy_registry
 from .jobs import job_registry, run_playground_job
 from .csrf import generate_csrf_token
 
@@ -408,7 +409,8 @@ async def save_preset_route(
     min_panel_success: int = Form(1),
     session=Depends(verify_admin_session),
 ):
-    if strategy not in ("B",):
+    public_strategies = [key for key in strategy_registry.keys() if not key.startswith("_")]
+    if strategy not in public_strategies:
         return HTMLResponse(
             "<div class='alert alert-danger'>Only Strategy B is currently implemented.</div>",
             status_code=400,

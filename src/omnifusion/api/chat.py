@@ -5,7 +5,6 @@ from .auth import verify_api_key
 from .errors import OmniFusionError
 from .model_names import normalize_requested_model
 from ..fusion.orchestrator import run_fusion
-from ..fusion.tool_orchestrator import run_fusion_with_tools
 from ..store.presets import get_or_create_compat_placeholder_preset, get_preset
 from ..settings import settings
 from ..llm.client import llm_client
@@ -280,29 +279,7 @@ async def create_chat_completion(
             if not preset:
                 raise OmniFusionError(f"Preset {preset_name} not found", status_code=404)
 
-            # Tool-calling requests: fuse the NEXT ACTION at every agentic step —
-            # the panel proposes actions, the judge picks the best, we return it.
-            # (See fusion/tool_orchestrator.py.) Keeps the council's benefit for
-            # agentic/Draco-style tasks instead of bypassing fusion.
-            if body.tools:
-                try:
-                    result = await asyncio.wait_for(
-                        run_fusion_with_tools(run_id, preset, body, key_hash),
-                        timeout=settings.omnifusion_wall_timeout,
-                    )
-                except asyncio.TimeoutError:
-                    raise OmniFusionError(
-                        f"Request exceeded wall timeout of {settings.omnifusion_wall_timeout}s",
-                        status_code=504,
-                        type_="server_error",
-                        code="wall_timeout",
-                    )
-                if isinstance(result, StreamingResponse):
-                    result.headers["X-OmniFusion-Run-Id"] = run_id
-                stream_owns_sem = _defer_slot_release_to_stream(result, sem)
-                return result
-
-            # Fix #13: Wrap run_fusion with wall_timeout from settings
+            # Fix #13: Wrap strategy execution with wall_timeout from settings.
             try:
                 result = await asyncio.wait_for(
                     run_fusion(run_id, preset, body, key_hash),

@@ -69,6 +69,14 @@ def _final_result_cost(final_result) -> float:
 async def run_fusion(
     run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
 ):
+    from .runtime.registry import execute_strategy
+
+    return await execute_strategy(run_id, preset, request, key_hash)
+
+
+async def run_fusion_classic(
+    run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
+):
     start_time = time.time()
 
     # 1. Initialize Request and Global budgets
