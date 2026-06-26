@@ -12,6 +12,7 @@ from omnifusion.fusion.judge import extract_json_from_text
 from omnifusion.fusion.runtime.artifacts import ArtifactGraph
 from omnifusion.fusion.runtime.executor import BudgetedExecutor
 from omnifusion.fusion.runtime.response import ResponseShaper
+from omnifusion.fusion.runtime.streaming import normalize_finish_reason
 from omnifusion.fusion.runtime.context import RunContext
 from omnifusion.fusion.runtime.strategy import FusionStrategy
 from omnifusion.fusion.runtime.bandit import select_panel_models
@@ -62,7 +63,7 @@ def _usage_tokens(response) -> tuple[int, int]:
 def _finish_reason(response) -> str:
     if not getattr(response, "choices", None):
         return "stop"
-    return getattr(response.choices[0], "finish_reason", "stop") or "stop"
+    return normalize_finish_reason(getattr(response.choices[0], "finish_reason", "stop"))
 
 
 def _render_artifacts(

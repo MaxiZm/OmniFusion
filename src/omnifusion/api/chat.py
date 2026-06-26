@@ -17,7 +17,8 @@ import logging
 from ..budget.ledger import initialize_request_budget, reserve_budget, reconcile_budget
 from ..store.runs import save_trace
 from ..fusion.types import FusionTrace
-from .sse import wants_usage, usage_chunk_sse
+from .sse import wants_usage
+from ..fusion.runtime.streaming import StreamingAdapter
 from ..logging_config import set_run_id
 from ..providers.pricing import (
     estimate_call_cost,
@@ -141,6 +142,7 @@ async def _single_model_completion(
 
         if body.stream:
             first_chunk = await response_obj.__anext__()
+            adapter = StreamingAdapter(model)
 
             async def stream_gen():
                 completion_text = ""
@@ -154,7 +156,7 @@ async def _single_model_completion(
                             completion_text += delta.content
                     if getattr(first_chunk, "usage", None):
                         stream_usage = first_chunk.usage
-                    yield f"data: {first_chunk.model_dump_json()}\n\n"
+                    yield adapter.chunk_sse(first_chunk)
 
                     async for chunk in response_obj:
                         if chunk.choices and len(chunk.choices) > 0:
@@ -163,7 +165,7 @@ async def _single_model_completion(
                                 completion_text += delta.content
                         if getattr(chunk, "usage", None):
                             stream_usage = chunk.usage
-                        yield f"data: {chunk.model_dump_json()}\n\n"
+                        yield adapter.chunk_sse(chunk)
 
                     # Prefer provider-reported usage from the terminal chunk; only
                     # fall back to the char//4 heuristic when the stream omits usage.
@@ -175,8 +177,8 @@ async def _single_model_completion(
                         completion_tokens = max(1, len(completion_text) // 4)
 
                     if wants_usage(body):
-                        yield usage_chunk_sse(model, prompt_tokens, completion_tokens)
-                    yield "data: [DONE]\n\n"
+                        yield adapter.usage_sse(prompt_tokens, completion_tokens)
+                    yield adapter.done_sse()
                 finally:
                     async def _cleanup():
                         pt = prompt_tokens or estimate_tokens(model, dict_messages)

@@ -22,7 +22,6 @@ V4 pro/flash (tools work in both thinking and non-thinking modes) — do. A mode
 genuinely doesn't support tools errors on the call and is dropped from the panel.
 """
 import asyncio
-import json
 import time
 import uuid
 import logging
@@ -35,10 +34,12 @@ from ..budget.ledger import initialize_request_budget
 from ..api.errors import InsufficientPanelError
 from ..api.schemas import ChatCompletionRequest
 from ..api.normalize import generation_passthrough_kwargs
-from ..api.sse import wants_usage, usage_chunk_sse
+from ..api.sse import wants_usage
 from .judge import run_judge, extract_json_from_text
 from .synth import run_synthesis
 from .runtime.executor import BudgetedExecutor
+from .runtime.response import ResponseShaper
+from .runtime.streaming import StreamingAdapter
 from .types import FusionTrace
 from ..store.runs import save_trace
 
@@ -253,64 +254,7 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
 
 
 def _usage_block(prompt_tokens: int, completion_tokens: int) -> dict:
-    return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
-    }
-
-
-def _tool_call_response_dict(preset, tool_calls, usage) -> dict:
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": f"fusion/{preset.name}",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": tool_calls,
-                },
-                "finish_reason": "tool_calls",
-            }
-        ],
-        "usage": usage,
-    }
-
-
-def _tool_call_sse(preset, tool_calls):
-    cid = f"chatcmpl-{uuid.uuid4()}"
-    created = int(time.time())
-    model = f"fusion/{preset.name}"
-
-    def chunk(delta, finish=None):
-        return {
-            "id": cid,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-        }
-
-    yield f"data: {json.dumps(chunk({'role': 'assistant', 'content': None}))}\n\n"
-    delta_tcs = [
-        {
-            "index": i,
-            "id": tc["id"],
-            "type": "function",
-            "function": {
-                "name": tc["function"]["name"],
-                "arguments": tc["function"]["arguments"],
-            },
-        }
-        for i, tc in enumerate(tool_calls)
-    ]
-    yield f"data: {json.dumps(chunk({'tool_calls': delta_tcs}))}\n\n"
-    yield f"data: {json.dumps(chunk({}, finish='tool_calls'))}\n\n"
-    yield "data: [DONE]\n\n"
+    return ResponseShaper.usage_block(prompt_tokens, completion_tokens)
 
 
 async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequest, key_hash: str):
@@ -384,12 +328,15 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         )
         await save_trace(trace, body.store, key_hash)
 
+        adapter = StreamingAdapter(f"fusion/{preset.name}")
         if body.stream:
             return StreamingResponse(
-                _tool_call_sse(preset, tool_calls), media_type="text/event-stream"
+                adapter.tool_call_sse(tool_calls), media_type="text/event-stream"
             )
-        return _tool_call_response_dict(
-            preset, tool_calls, _usage_block(panel_pt, panel_ct)
+        return ResponseShaper.tool_call_completion(
+            model=f"fusion/{preset.name}",
+            tool_calls=tool_calls,
+            usage=_usage_block(panel_pt, panel_ct),
         )
 
     # 3b. Final step: fuse the text proposals into the final answer via the classic
@@ -462,11 +409,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     if body.stream:
         first_chunk = await final_result.__anext__()
         _fusion_model = f"fusion/{preset.name}"
-
-        def _sse(chunk):
-            data = json.loads(chunk.model_dump_json())
-            data["model"] = _fusion_model
-            return json.dumps(data)
+        adapter = StreamingAdapter(_fusion_model)
 
         async def gen():
             completion_text = ""
@@ -477,19 +420,19 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                     completion_text += first_chunk.choices[0].delta.content
                 if getattr(first_chunk, "usage", None):
                     synth_usage = first_chunk.usage
-                yield f"data: {_sse(first_chunk)}\n\n"
+                yield adapter.chunk_sse(first_chunk)
                 async for ch in final_result:
                     if ch.choices and ch.choices[0].delta and ch.choices[0].delta.content:
                         completion_text += ch.choices[0].delta.content
                     if getattr(ch, "usage", None):
                         synth_usage = ch.usage
-                    yield f"data: {_sse(ch)}\n\n"
+                    yield adapter.chunk_sse(ch)
                 if wants_usage(body):
                     s_pt, s_ct = _usage_tokens(synth_usage)
                     jp = int(getattr(judge_analysis, "prompt_tokens", 0) or 0) if judge_analysis else 0
                     jc = int(getattr(judge_analysis, "completion_tokens", 0) or 0) if judge_analysis else 0
-                    yield usage_chunk_sse(_fusion_model, panel_pt + jp + s_pt, panel_ct + jc + s_ct)
-                yield "data: [DONE]\n\n"
+                    yield adapter.usage_sse(panel_pt + jp + s_pt, panel_ct + jc + s_ct)
+                yield adapter.done_sse()
             except Exception as exc:
                 err = exc
                 logger.error(f"tool-fusion final stream error {run_id}: {exc}", exc_info=True)
@@ -525,13 +468,9 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     judge_ct = int(getattr(judge_analysis, "completion_tokens", 0) or 0) if judge_analysis else 0
     synth_pt, synth_ct = _usage_tokens(getattr(final_result, "usage", None))
     usage = _usage_block(panel_pt + judge_pt + synth_pt, panel_ct + judge_ct + synth_ct)
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": f"fusion/{preset.name}",
-        "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}
-        ],
-        "usage": usage,
-    }
+    return ResponseShaper.chat_completion(
+        model=f"fusion/{preset.name}",
+        content=content,
+        usage=usage,
+        finish_reason="stop",
+    )

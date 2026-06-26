@@ -11,49 +11,14 @@ from ..api.sse import wants_usage
 from ..budget.ledger import initialize_request_budget
 from ..store.runs import save_trace
 from .runtime.response import ResponseShaper
-from .runtime.streaming import StreamingAdapter
+from .runtime.streaming import StreamingAdapter, normalize_finish_reason
 
 logger = logging.getLogger("omnifusion.orchestrator")
 
 
 def _read_usage(usage) -> tuple:
-    """Extract (prompt_tokens, completion_tokens) from a usage object or dict, defaulting to 0."""
-    if usage is None:
-        return 0, 0
-    if isinstance(usage, dict):
-        return int(usage.get("prompt_tokens", 0) or 0), int(usage.get("completion_tokens", 0) or 0)
-    return (
-        int(getattr(usage, "prompt_tokens", 0) or 0),
-        int(getattr(usage, "completion_tokens", 0) or 0),
-    )
-
-
-def _compute_usage(preset, panel_results, judge_analysis, final_result) -> dict:
-    """Build the response `usage` block.
-
-    Defaults to aggregating tokens across panel + judge + final stages, matching
-    what the request actually cost. If preset.usage_reporting == "final", only the
-    final synthesis call's usage is reported.
-    """
-    final_prompt, final_completion = _read_usage(getattr(final_result, "usage", None))
-
-    if getattr(preset, "usage_reporting", "aggregate") == "final":
-        prompt_tokens, completion_tokens = final_prompt, final_completion
-    else:
-        prompt_tokens, completion_tokens = final_prompt, final_completion
-        for r in panel_results:
-            p, c = _read_usage(r.usage)
-            prompt_tokens += p
-            completion_tokens += c
-        if judge_analysis is not None:
-            prompt_tokens += int(getattr(judge_analysis, "prompt_tokens", 0) or 0)
-            completion_tokens += int(getattr(judge_analysis, "completion_tokens", 0) or 0)
-
-    return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
-    }
+    """Thin alias for the canonical usage reader on the shaper."""
+    return ResponseShaper.read_usage(usage)
 
 
 def _final_result_cost(final_result) -> float:
@@ -292,8 +257,12 @@ async def run_fusion_classic(
 
             # Return an OpenAI-compatible response with fusion/<preset> as the model.
             # Usage aggregates panel + judge + final by default (preset.usage_reporting).
-            usage = _compute_usage(preset, panel_results, judge_analysis, final_result)
-            finish_reason = getattr(final_result.choices[0], "finish_reason", "stop")
+            usage = ResponseShaper.aggregate_usage(
+                preset, panel_results, judge_analysis, final_result
+            )
+            finish_reason = normalize_finish_reason(
+                getattr(final_result.choices[0], "finish_reason", "stop")
+            )
             return ResponseShaper.chat_completion(
                 model=f"fusion/{preset.name}",
                 content=content,

@@ -12,9 +12,9 @@ from omnifusion.fusion.tool_orchestrator import (
     _normalize_tool_calls,
     _describe_proposal,
     _decide_next_step,
-    _tool_call_response_dict,
-    _tool_call_sse,
 )
+from omnifusion.fusion.runtime.response import ResponseShaper
+from omnifusion.fusion.runtime.streaming import StreamingAdapter
 from omnifusion.fusion.types import Preset, PresetStage
 
 
@@ -84,14 +84,10 @@ async def test_decide_short_circuits_to_final_when_no_tool_proposals():
 
 
 def test_tool_call_response_dict_shape():
-    preset = Preset(
-        name="draco", strategy="B", panel_models=["m"],
-        panel=PresetStage(max_tokens=10, timeout=10),
-        judge_model="m", judge=PresetStage(max_tokens=10, timeout=10),
-        final_model="m", final=PresetStage(max_tokens=10, timeout=10),
-    )
     tcs = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
-    d = _tool_call_response_dict(preset, tcs, 0.001)
+    d = ResponseShaper.tool_call_completion(
+        model="fusion/draco", tool_calls=tcs, usage={"prompt_tokens": 1}
+    )
     assert d["model"] == "fusion/draco"
     assert d["choices"][0]["finish_reason"] == "tool_calls"
     assert d["choices"][0]["message"]["tool_calls"] == tcs
@@ -99,14 +95,8 @@ def test_tool_call_response_dict_shape():
 
 
 def test_tool_call_sse_is_valid_openai_stream():
-    preset = Preset(
-        name="draco", strategy="B", panel_models=["m"],
-        panel=PresetStage(max_tokens=10, timeout=10),
-        judge_model="m", judge=PresetStage(max_tokens=10, timeout=10),
-        final_model="m", final=PresetStage(max_tokens=10, timeout=10),
-    )
     tcs = [{"id": "c1", "type": "function", "function": {"name": "get_weather", "arguments": '{"city":"Paris"}'}}]
-    events = list(_tool_call_sse(preset, tcs))
+    events = list(StreamingAdapter("fusion/draco").tool_call_sse(tcs))
     blob = "".join(events)
     assert "data: [DONE]" in blob
     # A chunk must carry the tool_call and a terminal finish_reason.
