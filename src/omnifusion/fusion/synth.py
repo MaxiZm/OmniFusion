@@ -74,6 +74,7 @@ async def run_synthesis(
 
     response = None
     reconciled = False
+    stream_returned = False
     try:
         response = await llm_client.acompletion(
             provider_id="default",
@@ -84,21 +85,43 @@ async def run_synthesis(
         )
 
         if request.stream:
-            # We return the async generator and handle budget reconciliation after consumption
-            async def chunk_generator():
-                completion_text = ""
-                try:
-                    async for chunk in response:
-                        if chunk.choices and len(chunk.choices) > 0:
-                            delta = chunk.choices[0].delta
-                            if delta and delta.content:
-                                completion_text += delta.content
-                        yield chunk
-                finally:
-                    # Stream finished: estimate final cost and reconcile
+            class BudgetedSynthesisStream:
+                def __init__(self):
+                    self._completion_text = ""
+                    self._reconciled = False
+
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    try:
+                        chunk = await response.__anext__()
+                    except StopAsyncIteration:
+                        await self._cleanup()
+                        raise
+                    except BaseException:
+                        await self._cleanup()
+                        raise
+
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta
+                        if delta and delta.content:
+                            self._completion_text += delta.content
+                    return chunk
+
+                async def aclose(self):
+                    upstream_close = getattr(response, "aclose", None)
+                    if upstream_close is not None:
+                        await upstream_close()
+                    await self._cleanup()
+
+                async def _cleanup(self):
+                    if self._reconciled:
+                        return
+
                     async def run_cleanup():
                         prompt_tokens = estimate_tokens(preset.final_model, final_messages)
-                        approx_completion_tokens = max(1, len(completion_text) // 4)
+                        approx_completion_tokens = max(1, len(self._completion_text) // 4)
                         actual_cost_usd = get_model_cost_estimate(
                             preset.final_model, prompt_tokens, approx_completion_tokens
                         )
@@ -106,10 +129,13 @@ async def run_synthesis(
                         await reconcile_budget(
                             reservation_id, usd_to_micro(actual_cost_usd)
                         )
-                    await asyncio.shield(run_cleanup())
 
-            reconciled = True
-            return chunk_generator()
+                    await asyncio.shield(run_cleanup())
+                    self._reconciled = True
+
+            # The returned stream object is now the only owner of stream reconciliation.
+            stream_returned = True
+            return BudgetedSynthesisStream()
         else:
             cost_usd = calculate_actual_cost(response, preset.final_model)
             context["cost_usd"] = cost_usd
@@ -120,7 +146,7 @@ async def run_synthesis(
             return response
 
     finally:
-        if not reconciled:
+        if not reconciled and not stream_returned:
             async def run_cleanup():
                 await reconcile_budget(reservation_id, 0)
             await asyncio.shield(run_cleanup())

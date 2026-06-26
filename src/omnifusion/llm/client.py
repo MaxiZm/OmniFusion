@@ -5,6 +5,7 @@ import logging
 import random
 from typing import Optional
 from ..ratelimit.limiter import rate_limiter
+from ..ratelimit.circuit_breaker import CircuitOpenError, circuit_breaker
 from ..store.providers import resolve_provider_for_model
 from ..providers.validation import validate_base_url
 from ..providers.capabilities import get_provider_type_from_model, filter_params
@@ -130,7 +131,11 @@ class LLMClient:
         if api_base:
             call_kwargs["api_base"] = api_base
 
-        # 5. Concurrency control and retry loop on 429
+        # 5. Provider circuit breaker: fail fast once a provider is unhealthy.
+        if not circuit_breaker.allow_request(provider_id):
+            raise CircuitOpenError(provider_id)
+
+        # 6. Concurrency control and retry loop on 429
         retries = 3
         backoff = 1.0  # start at 1s
 
@@ -154,8 +159,10 @@ class LLMClient:
                         res, provider_id, chunk_timeout=timeout
                     )
                     released_or_delegated = True
+                    circuit_breaker.record_success(provider_id)
                     return wrapped_res
                 else:
+                    circuit_breaker.record_success(provider_id)
                     return res
             except Exception as e:
                 # Check if it's a rate limit error (429)
@@ -182,6 +189,7 @@ class LLMClient:
                     released_or_delegated = True
                     await asyncio.sleep(sleep_time)
                 else:
+                    circuit_breaker.record_failure(provider_id)
                     raise e
             finally:
                 if not released_or_delegated:
