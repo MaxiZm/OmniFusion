@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from .settings import settings, validate_startup_security
 from .api.chat import router as chat_router
 from .api.traces import router as traces_router
@@ -91,6 +92,42 @@ app = FastAPI(
 
 app.add_exception_handler(OmniFusionError, omnifusion_error_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
+
+
+def _api_error_code(status_code: int) -> str | None:
+    if status_code == 401:
+        return "unauthorized"
+    if status_code == 404:
+        return "not_found"
+    if status_code == 429:
+        return "rate_limit_error"
+    return None
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_openai_handler(request: Request, exc: HTTPException):
+    if request.url.path.startswith("/admin"):
+        return await fastapi_http_exception_handler(request, exc)
+
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    headers = dict(exc.headers or {})
+    run_id = getattr(request.state, "run_id", None)
+    if run_id:
+        headers["X-OmniFusion-Run-Id"] = run_id
+    return JSONResponse(
+        status_code=exc.status_code,
+        headers=headers,
+        content={
+            "error": {
+                "message": detail,
+                "type": "server_error"
+                if exc.status_code >= 500
+                else "invalid_request_error",
+                "param": None,
+                "code": _api_error_code(exc.status_code),
+            }
+        },
+    )
 
 
 def request_body_too_large_response(limit: int) -> JSONResponse:
