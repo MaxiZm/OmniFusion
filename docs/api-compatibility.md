@@ -15,9 +15,9 @@ OmniFusion exposes OpenAI-compatible routes under both `/v1` and `/api/v1`.
 - `openrouter/fusion` aliases to `fusion/general` by default.
 - `fugu` aliases to `fusion/fugu`.
 - `fugu-ultra` aliases to `fusion/fugu-ultra`.
-- `fugu` and `fugu-ultra` are placeholder presets until the conductor work lands.
-  Their model entries and traces self-label with
-  `compat_placeholder - not conductor-backed yet`.
+- `fugu` and `fugu-ultra` remain placeholder presets until ablation-proven
+  transparent Fugu-compatible configs replace them. Their model entries and
+  traces self-label with `compat_placeholder - not conductor-backed yet`.
 
 ## OpenRouter Plugins Mapping
 
