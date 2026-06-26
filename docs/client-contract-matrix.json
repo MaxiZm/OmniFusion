@@ -7,9 +7,16 @@
     "continue",
     "cursor-openai-compat"
   ],
+  "coverage_type_legend": {
+    "manual": "Reproducible-manual checklist; not a CI gate (e.g. headless automation is unreliable).",
+    "sdk": "Exercised by the actual pinned client SDK against the app.",
+    "unsupported": "Documented as unsupported for this client.",
+    "wire_contract": "Verified by HTTP-contract tests of the OpenAI wire protocol the client speaks (the client binary/SDK itself is not driven in CI)."
+  },
   "matrix": {
     "aider": {
       "chat": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m1b.py",
           "tests/test_m2_aliases.py"
@@ -18,6 +25,7 @@
         "status": "covered"
       },
       "errors": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_errors.py"
         ],
@@ -25,6 +33,7 @@
         "status": "covered"
       },
       "models": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_routes_models.py"
         ],
@@ -32,6 +41,7 @@
         "status": "covered"
       },
       "stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_streaming.py"
         ],
@@ -39,6 +49,7 @@
         "status": "covered"
       },
       "stream_usage": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_stream_usage.py"
         ],
@@ -46,11 +57,13 @@
         "status": "covered"
       },
       "tool_stream": {
+        "coverage_type": "unsupported",
         "covered_by": [],
         "reason": "Aider does not require a separate tool-stream cell in this M2 matrix.",
         "status": "unsupported"
       },
       "tools": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -60,6 +73,7 @@
     },
     "continue": {
       "chat": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_contract.py"
         ],
@@ -67,6 +81,7 @@
         "status": "covered"
       },
       "errors": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_errors.py"
         ],
@@ -74,6 +89,7 @@
         "status": "covered"
       },
       "models": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_routes_models.py"
         ],
@@ -81,6 +97,7 @@
         "status": "covered"
       },
       "stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_streaming.py"
         ],
@@ -88,6 +105,7 @@
         "status": "covered"
       },
       "stream_usage": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_stream_usage.py"
         ],
@@ -95,6 +113,7 @@
         "status": "covered"
       },
       "tool_stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -102,6 +121,7 @@
         "status": "covered"
       },
       "tools": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -111,36 +131,43 @@
     },
     "cursor-openai-compat": {
       "chat": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
       },
       "errors": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
       },
       "models": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
       },
       "stream": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
       },
       "stream_usage": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
       },
       "tool_stream": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
       },
       "tools": {
+        "coverage_type": "manual",
         "covered_by": [],
         "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
         "status": "manual"
@@ -148,6 +175,7 @@
     },
     "openai-node": {
       "chat": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_contract.py"
         ],
@@ -155,6 +183,7 @@
         "status": "covered"
       },
       "errors": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_errors.py"
         ],
@@ -162,6 +191,7 @@
         "status": "covered"
       },
       "models": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_routes_models.py"
         ],
@@ -169,6 +199,7 @@
         "status": "covered"
       },
       "stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_streaming.py"
         ],
@@ -176,6 +207,7 @@
         "status": "covered"
       },
       "stream_usage": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_stream_usage.py"
         ],
@@ -183,6 +215,7 @@
         "status": "covered"
       },
       "tool_stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -190,6 +223,7 @@
         "status": "covered"
       },
       "tools": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -199,6 +233,7 @@
     },
     "openai-python": {
       "chat": {
+        "coverage_type": "sdk",
         "covered_by": [
           "tests/test_client_openai_python.py",
           "tests/test_contract.py"
@@ -207,6 +242,7 @@
         "status": "covered"
       },
       "errors": {
+        "coverage_type": "sdk",
         "covered_by": [
           "tests/test_client_openai_python.py",
           "tests/test_m2_errors.py"
@@ -215,6 +251,7 @@
         "status": "covered"
       },
       "models": {
+        "coverage_type": "sdk",
         "covered_by": [
           "tests/test_client_openai_python.py",
           "tests/test_m2_routes_models.py"
@@ -223,6 +260,7 @@
         "status": "covered"
       },
       "stream": {
+        "coverage_type": "sdk",
         "covered_by": [
           "tests/test_client_openai_python.py",
           "tests/test_streaming.py"
@@ -231,6 +269,7 @@
         "status": "covered"
       },
       "stream_usage": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_stream_usage.py"
         ],
@@ -238,6 +277,7 @@
         "status": "covered"
       },
       "tool_stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -245,6 +285,7 @@
         "status": "covered"
       },
       "tools": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -254,6 +295,7 @@
     },
     "opencode": {
       "chat": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_contract.py",
           "tests/test_m8_opencode_loop.py"
@@ -262,6 +304,7 @@
         "status": "covered"
       },
       "errors": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_errors.py"
         ],
@@ -269,6 +312,7 @@
         "status": "covered"
       },
       "models": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_m2_routes_models.py"
         ],
@@ -276,6 +320,7 @@
         "status": "covered"
       },
       "stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_streaming.py"
         ],
@@ -283,6 +328,7 @@
         "status": "covered"
       },
       "stream_usage": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_stream_usage.py"
         ],
@@ -290,6 +336,7 @@
         "status": "covered"
       },
       "tool_stream": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py"
         ],
@@ -297,6 +344,7 @@
         "status": "covered"
       },
       "tools": {
+        "coverage_type": "wire_contract",
         "covered_by": [
           "tests/test_tool_fusion.py",
           "tests/test_m8_opencode_loop.py"

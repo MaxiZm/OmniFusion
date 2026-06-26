@@ -11,7 +11,7 @@ from pydantic import BaseModel, JsonValue, field_validator
 
 from .auth import verify_api_key
 from .chat import create_chat_completion
-from .schemas import ChatCompletionRequest, ToolChoice, ToolDefinition
+from .schemas import ChatCompletionRequest, StreamOptions, ToolChoice, ToolDefinition
 
 router = APIRouter()
 
@@ -107,6 +107,7 @@ async def response_stream(chat_stream: StreamingResponse, model: str):
     response_id = f"resp-{uuid.uuid4()}"
     collected = ""
     latest_model = model
+    collected_usage: dict[str, Any] = {}
     buffer = ""
 
     async for chunk in chat_stream.body_iterator:
@@ -125,6 +126,10 @@ async def response_stream(chat_stream: StreamingResponse, model: str):
                 continue
             payload = json.loads(raw_data)
             latest_model = payload.get("model", latest_model)
+            # A terminal usage chunk carries a usage block (with empty choices);
+            # capture it so response.completed can report real usage.
+            if payload.get("usage"):
+                collected_usage = payload["usage"]
             choices = payload.get("choices") or []
             delta = (choices[0].get("delta") or {}).get("content") if choices else None
             if delta:
@@ -143,7 +148,7 @@ async def response_stream(chat_stream: StreamingResponse, model: str):
             "id": response_id,
             "created": int(time.time()),
             "model": latest_model,
-            "usage": {},
+            "usage": collected_usage,
         },
         text=collected,
     )
@@ -168,6 +173,9 @@ async def create_response(
         stream=body.stream,
         max_tokens=body.max_output_tokens,
         metadata=body.metadata,
+        # Ask the underlying chat stream for a terminal usage chunk so the streamed
+        # response.completed event can report usage (parity with non-stream).
+        stream_options=StreamOptions(include_usage=True) if body.stream else None,
     )
     chat_result = await create_chat_completion(request, chat_body, response, key_hash)
     if isinstance(chat_result, StreamingResponse):

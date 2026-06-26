@@ -38,6 +38,15 @@ def test_client_contract_matrix_has_no_unclassified_cells():
                 for test_ref in result["covered_by"]:
                     ref_path = Path(test_ref.split("::", 1)[0])
                     assert ref_path.exists(), f"{client}/{cell} cites missing {test_ref}"
+                # Honesty: every covered cell declares whether it is real-SDK or
+                # wire-contract coverage, and an "sdk" claim must cite an SDK test.
+                assert result["coverage_type"] in {"sdk", "wire_contract"}, (
+                    f"{client}/{cell} has invalid coverage_type"
+                )
+                if result["coverage_type"] == "sdk":
+                    assert any(
+                        "client_" in ref or "_client" in ref for ref in result["covered_by"]
+                    ), f"{client}/{cell} claims sdk coverage without an SDK test"
             else:
                 assert result["reason"], f"{client}/{cell} missing reason"
 

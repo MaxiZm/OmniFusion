@@ -46,6 +46,15 @@ Fusion model references such as `openrouter/fusion`, `openrouter:fusion`, and
 `fusion/*` are blocked for internal panel/judge/synthesis model calls to prevent
 recursive fusion.
 
+## Client Compatibility Matrix
+
+`docs/client-contract-matrix.json` pins each client version and classifies every
+cell honestly via `coverage_type`: `sdk` (driven by the actual pinned client SDK —
+currently openai-python), `wire_contract` (verified by HTTP-contract tests of the
+OpenAI wire protocol the client speaks, without driving the client binary in CI),
+or `manual` (a reproducible checklist, e.g. Cursor, not a CI gate). Pinning a client
+version does not by itself imply SDK-level testing — read `coverage_type`.
+
 ## Web Tools
 
 Server-side web grounding ("panel with web on") is opt-in: enable it per preset
