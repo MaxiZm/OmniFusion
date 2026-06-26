@@ -73,23 +73,31 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _default_transport(url: str, headers: Mapping[str, str]) -> WebResponse:
+def _default_transport(
+    url: str, headers: Mapping[str, str], max_bytes: int | None = None
+) -> WebResponse:
+    # Read at most `max_bytes` from the socket so an oversized response can never be
+    # pulled fully into memory before the content-size cap is applied. `read(n)` on a
+    # urllib response reads up to n bytes; the caller passes max_content_bytes + 1 so
+    # truncation is still detectable.
     request = urllib.request.Request(url, headers=dict(headers), method="GET")
     opener = urllib.request.build_opener(_NoRedirectHandler)
     try:
         with opener.open(request, timeout=15) as resp:
+            body = resp.read(max_bytes) if max_bytes is not None else resp.read()
             return WebResponse(
                 status=resp.status,
                 url=resp.geturl(),
                 headers=dict(resp.headers.items()),
-                body=resp.read(),
+                body=body,
             )
     except urllib.error.HTTPError as exc:
+        body = exc.read(max_bytes) if max_bytes is not None else exc.read()
         return WebResponse(
             status=exc.code,
             url=exc.geturl(),
             headers=dict(exc.headers.items()),
-            body=exc.read(),
+            body=body,
         )
 
 
@@ -224,10 +232,17 @@ class WebFetcher:
         if domain_interval < 0:
             raise ValueError("per_domain_interval_seconds must be >= 0")
 
-        self.transport = transport or _default_transport
         self.resolver = resolver or _default_resolver
         self.max_redirects = max_redirects
         self.max_content_bytes = max_content_bytes
+        # The default transport reads at most max_content_bytes + 1 from the socket
+        # (enforcing the hard cap before the body reaches memory); the +1 keeps the
+        # downstream `len(body) > max_content_bytes` truncation check accurate.
+        if transport is not None:
+            self.transport = transport
+        else:
+            read_limit = max_content_bytes + 1
+            self.transport = lambda url, headers: _default_transport(url, headers, read_limit)
         self.excerpt_chars = excerpt_chars
         self.nonce = nonce
         self.cache_ttl_seconds = cache_ttl

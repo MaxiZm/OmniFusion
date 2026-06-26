@@ -119,3 +119,82 @@ async def test_seed_and_penalties_reach_panel_and_synthesis(tmp_path, monkeypatc
     assert seen["panel-a"].get("presence_penalty") == 0.3
     assert seen["final-a"].get("seed") == 42
     assert seen["final-a"].get("presence_penalty") == 0.3
+
+
+@pytest.mark.asyncio
+async def test_tool_fusion_routes_providers_and_counts_judge_usage(tmp_path, monkeypatch):
+    """[P1] tool panel/judge honor the pool provider_id and the tool-judge call's
+    usage/cost is aggregated into the trace + response, not dropped."""
+    import omnifusion.llm.client as client_mod
+    from omnifusion.fusion.tool_orchestrator import run_fusion_with_tools
+
+    old_db = settings.db_path
+    settings.db_path = str(tmp_path / "toolfusion.db")
+    seen_providers = {}
+
+    tool_call = {"id": "c1", "type": "function", "function": {"name": "do_thing", "arguments": "{}"}}
+
+    class _TMsg:
+        def __init__(self, content, tool_calls=None):
+            self.content = content
+            self.tool_calls = tool_calls
+
+    class _TChoice:
+        def __init__(self, content, tool_calls=None):
+            self.message = _TMsg(content, tool_calls)
+
+    class _TResp:
+        def __init__(self, content, tool_calls=None, pt=3, ct=4):
+            self.choices = [_TChoice(content, tool_calls)]
+            self.usage = _MockUsage(prompt_tokens=pt, completion_tokens=ct)
+
+    async def fake_acompletion(provider_id, model, messages, **kwargs):
+        seen_providers[model] = provider_id
+        if kwargs.get("tools"):
+            # tool-panel proposes a tool call
+            return _TResp(None, tool_calls=[tool_call], pt=10, ct=2)
+        # tool-judge picks it
+        return _TResp('{"decision": "tool", "best_index": 0}', pt=5, ct=1)
+
+    try:
+        await init_db()
+        monkeypatch.setattr(client_mod.llm_client, "acompletion", fake_acompletion)
+        # Pool routes panel-a -> prov-x, judge-a -> prov-y.
+        preset = Preset.model_validate(
+            {
+                "name": "toolp",
+                "version": 2,
+                "strategy": "B",
+                "models": [
+                    {"provider_id": "prov-x", "role": "panel", "model": "panel-a"},
+                    {"provider_id": "prov-y", "role": "judge", "model": "judge-a"},
+                    {"provider_id": "prov-z", "role": "final", "model": "final-a"},
+                ],
+                "budgets": {
+                    "panel": {"max_tokens": 16, "timeout": 5},
+                    "judge": {"max_tokens": 16, "timeout": 5},
+                    "final": {"max_tokens": 16, "timeout": 5},
+                },
+            }
+        )
+        body = ChatCompletionRequest(
+            model="fusion/toolp",
+            messages=[ChatMessage(role="user", content="use a tool")],
+            tools=[{"type": "function", "function": {"name": "do_thing"}}],
+            stream=False,
+            store=True,
+        )
+        response = await run_fusion_with_tools("toolfusion-run", preset, body, "k")
+    finally:
+        import os
+
+        if os.path.exists(settings.db_path):
+            os.remove(settings.db_path)
+        settings.db_path = old_db
+
+    # Provider routing honored the pool, not hardcoded "default".
+    assert seen_providers["panel-a"] == "prov-x"
+    assert seen_providers["judge-a"] == "prov-y"
+    # The tool-judge call's tokens (5/1) are aggregated with the panel's (10/2).
+    assert response["usage"]["prompt_tokens"] == 15
+    assert response["usage"]["completion_tokens"] == 3

@@ -125,7 +125,7 @@ async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice, gen_
         try:
             resp = await executor.call(
                 f"tool-panel/{model}",
-                provider_id="default",
+                provider_id=preset.provider_id_for(model, "panel"),
                 model=model,
                 messages=dict_messages,
                 tools=tools,
@@ -169,12 +169,13 @@ def _describe_proposal(i: int, p: dict) -> str:
 async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict:
     """Judge selects the single best next action across the panel's proposals.
 
-    Returns {"decision": "tool"|"final", "best_index": int}.
+    Returns {"decision", "best_index", "cost", "prompt_tokens", "completion_tokens"}
+    so the coordinating judge call's usage/cost is aggregated, not dropped.
     """
     # If nobody proposed a tool call, the step is necessarily a final answer.
     any_tool = any(p.get("tool_calls") for p in ok_proposals)
     if not any_tool:
-        return {"decision": "final", "best_index": 0}
+        return {"decision": "final", "best_index": 0, "cost": 0.0, "prompt_tokens": 0, "completion_tokens": 0}
 
     descriptions = "\n".join(
         _describe_proposal(i, p) for i, p in enumerate(ok_proposals)
@@ -204,6 +205,10 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
 
     messages = [{"role": "user", "content": judge_prompt}]
     executor = BudgetedExecutor(run_id)
+    judge_provider = preset.provider_id_for(preset.judge_model, "judge")
+    cost = 0.0
+    judge_pt = 0
+    judge_ct = 0
     try:
         # Request JSON mode; if a model rejects it, retry without (the extractor is
         # robust either way). filter_params drops it for providers that don't support it.
@@ -216,7 +221,7 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
         try:
             resp = await executor.call(
                 "tool-judge",
-                provider_id="default",
+                provider_id=judge_provider,
                 model=preset.judge_model,
                 messages=messages,
                 max_tokens=preset.judge.max_tokens,
@@ -226,12 +231,14 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
             kwargs.pop("response_format", None)
             resp = await executor.call(
                 "tool-judge",
-                provider_id="default",
+                provider_id=judge_provider,
                 model=preset.judge_model,
                 messages=messages,
                 max_tokens=preset.judge.max_tokens,
                 **kwargs,
             )
+        cost = getattr(resp, "_omnifusion_cost_usd", 0.0)
+        judge_pt, judge_ct = _usage_tokens(getattr(resp, "usage", None))
         data = extract_json_from_text(resp.choices[0].message.content)
         decision = data.get("decision", "tool")
         best_index = int(data.get("best_index", 0))
@@ -250,7 +257,13 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
                 break
         else:
             decision = "final"
-    return {"decision": decision, "best_index": best_index}
+    return {
+        "decision": decision,
+        "best_index": best_index,
+        "cost": cost,
+        "prompt_tokens": judge_pt,
+        "completion_tokens": judge_ct,
+    }
 
 
 def _usage_block(prompt_tokens: int, completion_tokens: int) -> dict:
@@ -284,12 +297,14 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
 
     panel_cost = sum(p.get("cost", 0.0) for p in proposals)
 
-    # 2. Judge selects the best next action.
+    # 2. Judge selects the best next action. Its cost/tokens are aggregated below so
+    # the coordinating tool-judge call is not dropped from the trace/usage.
     decision = await _decide_next_step(run_id, preset, dict_messages, ok)
+    step_judge_cost = decision.get("cost", 0.0)
 
-    # Aggregate panel token usage so responses report real (non-zero) usage.
-    panel_pt = sum(p.get("prompt_tokens", 0) for p in proposals)
-    panel_ct = sum(p.get("completion_tokens", 0) for p in proposals)
+    # Aggregate panel + tool-judge token usage so responses report real usage.
+    panel_pt = sum(p.get("prompt_tokens", 0) for p in proposals) + decision.get("prompt_tokens", 0)
+    panel_ct = sum(p.get("completion_tokens", 0) for p in proposals) + decision.get("completion_tokens", 0)
 
     # 3a. Tool step: return the chosen tool call(s); client executes and loops back.
     if decision["decision"] == "tool":
@@ -316,7 +331,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         trace = FusionTrace(
             run_id=run_id,
             preset=preset.name,
-            cost_usd=panel_cost,
+            cost_usd=panel_cost + step_judge_cost,
             wall_ms=int((time.time() - start_time) * 1000),
             degraded=False,
             panel_results=panel_results,
@@ -440,7 +455,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                 synth_cost = _final_result_cost(final_result)
                 trace = FusionTrace(
                     run_id=run_id, preset=preset.name,
-                    cost_usd=panel_cost + judge_cost + synth_cost,
+                    cost_usd=panel_cost + step_judge_cost + judge_cost + synth_cost,
                     wall_ms=int((time.time() - start_time) * 1000),
                     degraded=err is not None, panel_results=panel_results,
                     judge_analysis=judge_analysis, final_answer=completion_text,
@@ -456,7 +471,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     synth_cost = _final_result_cost(final_result)
     trace = FusionTrace(
         run_id=run_id, preset=preset.name,
-        cost_usd=panel_cost + judge_cost + synth_cost,
+        cost_usd=panel_cost + step_judge_cost + judge_cost + synth_cost,
         wall_ms=int((time.time() - start_time) * 1000),
         degraded=False, panel_results=panel_results,
         judge_analysis=judge_analysis, final_answer=content,

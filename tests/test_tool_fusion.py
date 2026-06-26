@@ -80,7 +80,12 @@ async def test_decide_short_circuits_to_final_when_no_tool_proposals():
     )
     proposals = [{"content": "answer A", "tool_calls": None}, {"content": "answer B", "tool_calls": None}]
     decision = await _decide_next_step("run-x", preset, [{"role": "user", "content": "hi"}], proposals)
-    assert decision == {"decision": "final", "best_index": 0}
+    assert decision["decision"] == "final"
+    assert decision["best_index"] == 0
+    # No judge LLM call happened, so no cost/tokens are attributed.
+    assert decision["cost"] == 0.0
+    assert decision["prompt_tokens"] == 0
+    assert decision["completion_tokens"] == 0
 
 
 def test_tool_call_response_dict_shape():

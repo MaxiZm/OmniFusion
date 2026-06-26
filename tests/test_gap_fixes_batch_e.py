@@ -23,6 +23,29 @@ def test_pdf_is_in_mime_allowlist():
     assert "application/pdf" in _ALLOWED_MIME_TYPES
 
 
+def test_default_transport_reads_bounded_to_content_cap(monkeypatch):
+    """[P1] The default transport must read at most max_content_bytes+1 from the
+    socket so an oversized response never fully buffers before the cap applies."""
+    import omnifusion.tools.web as web_mod
+
+    captured = {}
+
+    def fake_default_transport(url, headers, max_bytes=None):
+        captured["max_bytes"] = max_bytes
+        return WebResponse(status=200, url=url, headers={"content-type": "text/plain"}, body=b"ok")
+
+    monkeypatch.setattr(web_mod, "_default_transport", fake_default_transport)
+    # No injected transport -> WebFetcher builds the bounded default wrapper.
+    fetcher = WebFetcher(
+        resolver=lambda host: ["93.184.216.34"],
+        max_content_bytes=100,
+        cache_ttl_seconds=0,
+        per_domain_interval_seconds=0,
+    )
+    fetcher.fetch("https://example.com/page")
+    assert captured["max_bytes"] == 101
+
+
 def test_pdf_fetch_extracts_text(monkeypatch):
     """application/pdf is fetched and text-extracted (pdf-text MIME support)."""
     import omnifusion.tools.web as web_mod
