@@ -4,6 +4,20 @@ from typing import List, Optional, Annotated
 import json
 
 
+_PLACEHOLDER_SECRET_KEYS = {
+    "",
+    "your_fernet_secret_key",
+    "your-fernet-secret-key",
+    "changeme",
+}
+_PLACEHOLDER_ADMIN_PASSWORDS = {
+    "",
+    "your_admin_password",
+    "your-admin-password",
+    "changeme",
+}
+
+
 class Settings(BaseSettings):
     # Security
     omnifusion_secret_key: Optional[SecretStr] = None
@@ -20,8 +34,9 @@ class Settings(BaseSettings):
         default_factory=list
     )
 
-    # Fix #7: Secure cookie flag (must be True in production behind HTTPS)
-    omnifusion_secure_cookie: bool = False
+    # Secure by default; local HTTP development can opt out with
+    # OMNIFUSION_SECURE_COOKIE=0.
+    omnifusion_secure_cookie: bool = True
 
     # Fix #8: Login brute-force protection settings
     omnifusion_max_login_attempts: int = 5
@@ -60,6 +75,14 @@ class Settings(BaseSettings):
     # DB
     db_path: str = "data/omnifusion.db"
 
+    # Logging
+    omnifusion_log_level: str = "INFO"
+    omnifusion_log_format: str = "plain"
+
+    # Provider circuit breaker
+    omnifusion_circuit_breaker_failure_threshold: int = 5
+    omnifusion_circuit_breaker_cooldown_seconds: float = 30.0
+
     # extra="ignore": a self-hosted deployment's environment will contain unrelated
     # vars; never refuse to boot because of one. Unknown keys in .env are ignored.
     model_config = SettingsConfigDict(
@@ -92,3 +115,32 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_startup_security(s: Settings = settings) -> None:
+    """Reject placeholder secrets before the app starts serving traffic."""
+    if not s.omnifusion_secret_key:
+        raise ValueError(
+            "OMNIFUSION_SECRET_KEY is not set. Generate one with: "
+            "uv run python -m src.omnifusion.cli genkey"
+        )
+    secret_key = s.omnifusion_secret_key.get_secret_value().strip()
+    if secret_key.lower() in _PLACEHOLDER_SECRET_KEYS:
+        raise ValueError(
+            "OMNIFUSION_SECRET_KEY is still a placeholder value. Generate a real key."
+        )
+
+    try:
+        from cryptography.fernet import Fernet
+
+        Fernet(secret_key.encode("utf-8"))
+    except Exception as exc:
+        raise ValueError(f"OMNIFUSION_SECRET_KEY is not a valid Fernet key: {exc}") from exc
+
+    if not s.omnifusion_admin_password:
+        raise ValueError("OMNIFUSION_ADMIN_PASSWORD is not set.")
+    admin_password = s.omnifusion_admin_password.get_secret_value().strip()
+    if admin_password.lower() in _PLACEHOLDER_ADMIN_PASSWORDS:
+        raise ValueError(
+            "OMNIFUSION_ADMIN_PASSWORD is still a placeholder value. Set a real password."
+        )

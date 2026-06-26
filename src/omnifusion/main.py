@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from .settings import settings
+from fastapi import FastAPI, Request
+from .settings import settings, validate_startup_security
 from .api.chat import router as chat_router
 from .api.traces import router as traces_router
 from .api.models import router as models_router
@@ -12,6 +12,8 @@ from .api.errors import (
     generic_exception_handler,
 )
 from .secrets.redact import setup_logging_redaction
+from .logging_config import configure_logging, set_run_id
+from .ratelimit.circuit_breaker import circuit_breaker, configure_from_settings
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -21,17 +23,28 @@ import asyncio
 from .store.db import init_db, get_db_connection, sweep_expired_sessions
 
 # Configure logging to redact secrets if necessary
-logging.basicConfig(level=logging.INFO)
+configure_logging(settings.omnifusion_log_level, settings.omnifusion_log_format)
 setup_logging_redaction()
 logger = logging.getLogger("omnifusion")
 
 # Fix (medium): Store strong references to background tasks to prevent GC-vanishing.
 _background_tasks: list = []
+_background_task_names: dict = {}
+
+
+def _create_background_task(name: str, coro) -> asyncio.Task:
+    task = asyncio.create_task(coro, name=f"omnifusion:{name}")
+    _background_tasks.append(task)
+    _background_task_names[task] = name
+    return task
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting OmniFusion...")
+    validate_startup_security()
+    configure_from_settings(settings)
+
     # 1. Initialize DB and tables
     await init_db()
     # 2. Check and enforce single worker constraint
@@ -39,19 +52,11 @@ async def lifespan(app: FastAPI):
 
     # Fix (medium): Store task references so they can't be GC'd and can be
     # cancelled cleanly on shutdown.
-    heartbeat_task = asyncio.create_task(worker_heartbeat_loop())
-    sweep_task = asyncio.create_task(jobs_sweep_loop())
-    session_sweep_task = asyncio.create_task(session_sweep_loop())
-    reservation_sweep_task = asyncio.create_task(reservation_sweep_loop())
-    runs_sweep_task = asyncio.create_task(runs_sweep_loop())
-
-    _background_tasks.extend([
-        heartbeat_task,
-        sweep_task,
-        session_sweep_task,
-        reservation_sweep_task,
-        runs_sweep_task,
-    ])
+    _create_background_task("heartbeat", worker_heartbeat_loop())
+    _create_background_task("jobs_sweep", jobs_sweep_loop())
+    _create_background_task("session_sweep", session_sweep_loop())
+    _create_background_task("reservation_sweep", reservation_sweep_loop())
+    _create_background_task("runs_sweep", runs_sweep_loop())
 
     if settings.omnifusion_unsafe_allow_multiworker:
         logger.warning(
@@ -71,6 +76,7 @@ async def lifespan(app: FastAPI):
         if _background_tasks:
             await asyncio.gather(*_background_tasks, return_exceptions=True)
         _background_tasks.clear()
+        _background_task_names.clear()
 
 
 app = FastAPI(
@@ -82,6 +88,15 @@ app = FastAPI(
 
 app.add_exception_handler(OmniFusionError, omnifusion_error_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
+
+
+@app.middleware("http")
+async def run_id_logging_middleware(request: Request, call_next):
+    set_run_id(getattr(request.state, "run_id", None))
+    try:
+        return await call_next(request)
+    finally:
+        set_run_id(None)
 
 
 @app.exception_handler(RequestValidationError)
@@ -114,6 +129,33 @@ app.include_router(chat_router, prefix="/v1")
 app.include_router(traces_router, prefix="/v1")
 app.include_router(models_router, prefix="/v1")
 app.include_router(admin_router, prefix="/admin")
+
+
+@app.get("/health")
+async def health():
+    status_code = 200
+    payload = {"status": "ok", "db": {"status": "ok"}, "tasks": {}}
+
+    try:
+        async with get_db_connection() as db:
+            await db.execute("SELECT 1")
+    except Exception as exc:
+        status_code = 503
+        payload["status"] = "unhealthy"
+        payload["db"] = {"status": "unhealthy", "error": str(exc)}
+
+    for task in _background_tasks:
+        name = _background_task_names.get(task, task.get_name())
+        task_status = "running"
+        if task.done():
+            task_status = "failed" if task.exception() else "stopped"
+            if task_status == "failed":
+                status_code = 503
+                payload["status"] = "unhealthy"
+        payload["tasks"][name] = {"status": task_status}
+
+    payload["circuit_breaker"] = circuit_breaker.get_all_states()
+    return JSONResponse(status_code=status_code, content=payload)
 
 
 async def worker_heartbeat_loop():

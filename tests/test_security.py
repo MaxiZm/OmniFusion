@@ -6,6 +6,8 @@ os.environ["OMNIFUSION_SECRET_KEY"] = "U1NfdlhjdmJubWwwMTIzNDU2Nzg5MGFiY2RlZmdoa
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from omnifusion.admin import routes as admin_routes
 from omnifusion.main import app
 from omnifusion.settings import settings
 from omnifusion.store.db import init_db
@@ -19,10 +21,15 @@ def setup_settings_and_db():
     old_db = settings.db_path
     old_keys = settings.omnifusion_api_keys
     old_allow_egress = settings.omnifusion_allow_private_egress
+    old_secure_cookie = settings.omnifusion_secure_cookie
+    old_admin_password = settings.omnifusion_admin_password
 
     settings.db_path = "test_security.db"
     settings.omnifusion_api_keys = ["sec-key-1", "sec-key-2"]
     settings.omnifusion_allow_private_egress = False
+    settings.omnifusion_secure_cookie = False
+    settings.omnifusion_admin_password = SecretStr("test-password-123")
+    admin_routes._admin_hash = None
 
     if os.path.exists(settings.db_path):
         os.remove(settings.db_path)
@@ -39,6 +46,9 @@ def setup_settings_and_db():
     settings.db_path = old_db
     settings.omnifusion_api_keys = old_keys
     settings.omnifusion_allow_private_egress = old_allow_egress
+    settings.omnifusion_secure_cookie = old_secure_cookie
+    settings.omnifusion_admin_password = old_admin_password
+    admin_routes._admin_hash = None
 
 
 def test_ssrf_egress_protection():

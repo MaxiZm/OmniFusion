@@ -206,6 +206,12 @@ async def login(
     # Success: clear failed attempts
     await _clear_login_attempts(client_ip)
 
+    old_session_id = request.cookies.get("session_id")
+    if old_session_id:
+        async with get_db_connection() as db:
+            await db.execute("DELETE FROM sessions WHERE session_id=?", (old_session_id,))
+            await db.commit()
+
     # Create session
     session_id = secrets.token_hex(32)
     csrf_token = generate_csrf_token()

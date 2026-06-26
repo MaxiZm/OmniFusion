@@ -16,6 +16,7 @@ from ..budget.ledger import initialize_request_budget, reserve_budget, reconcile
 from ..store.runs import save_trace
 from ..fusion.types import FusionTrace
 from .sse import wants_usage, usage_chunk_sse
+from ..logging_config import set_run_id
 from ..providers.pricing import (
     estimate_call_cost,
     calculate_actual_cost,
@@ -250,6 +251,7 @@ async def create_chat_completion(
     run_id = str(uuid.uuid4())
     request.state.run_id = run_id
     response.headers["X-OmniFusion-Run-Id"] = run_id
+    set_run_id(run_id)
 
     # Fix #11: Acquire per-key concurrency slot
     sem = None
