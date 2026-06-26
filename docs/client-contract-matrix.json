@@ -1,5 +1,5 @@
 {
-  "scope": "M2 Tier A HTTP contract matrix. Covered cells reference deterministic tests in this repository; Cursor remains reproducible-manual.",
+  "scope": "M2-M8 Tier A HTTP contract matrix. Covered cells reference deterministic tests in this repository; Cursor remains reproducible-manual.",
   "clients": [
     "openai-python",
     "openai-node",
@@ -63,13 +63,13 @@
       "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""}
     },
     "opencode": {
-      "chat": {"status": "covered", "covered_by": ["tests/test_contract.py"], "reason": ""},
+      "chat": {"status": "covered", "covered_by": ["tests/test_contract.py", "tests/test_m8_opencode_loop.py"], "reason": ""},
       "errors": {"status": "covered", "covered_by": ["tests/test_m2_errors.py"], "reason": ""},
       "models": {"status": "covered", "covered_by": ["tests/test_m2_routes_models.py"], "reason": ""},
       "stream": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
       "stream_usage": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
       "tool_stream": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""},
-      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""}
+      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py", "tests/test_m8_opencode_loop.py"], "reason": ""}
     }
   }
 }
