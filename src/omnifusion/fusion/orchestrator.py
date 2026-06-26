@@ -1,6 +1,4 @@
 import time
-import json
-import uuid
 import logging
 from fastapi.responses import StreamingResponse
 from .types import Preset, FusionTrace, trace_metadata_for_preset
@@ -8,9 +6,11 @@ from .panel import run_panel
 from .judge import run_judge
 from .synth import run_synthesis
 from ..api.schemas import ChatCompletionRequest
-from ..api.sse import wants_usage, usage_chunk_sse
+from ..api.sse import wants_usage
 from ..budget.ledger import initialize_request_budget
 from ..store.runs import save_trace
+from .runtime.response import ResponseShaper
+from .runtime.streaming import StreamingAdapter
 
 logger = logging.getLogger("omnifusion.orchestrator")
 
@@ -123,29 +123,16 @@ async def run_fusion(
                     best_panel = max(ok_panels, key=lambda x: len(x.content or ""))
                     degraded = True
 
-                    final_response_dict = {
-                        "id": f"chatcmpl-{uuid.uuid4()}",
-                        "object": "chat.completion",
-                        "created": int(time.time()),
-                        "model": request.model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": best_panel.content,
-                                },
-                                # OpenAI finish_reason is a closed enum; "fallback" breaks
-                                # strict clients. The degraded nature is recorded in the trace.
-                                "finish_reason": "stop",
-                            }
-                        ],
-                        "usage": {
+                    final_response_dict = ResponseShaper.chat_completion(
+                        model=request.model,
+                        content=best_panel.content,
+                        usage={
                             "prompt_tokens": 0,
                             "completion_tokens": 0,
                             "total_tokens": 0,
                         },
-                    }
+                        finish_reason="stop",
+                    )
 
                     wall_ms = int((time.time() - start_time) * 1000)
                     panel_cost = sum(r.cost_usd for r in panel_results)
@@ -172,12 +159,7 @@ async def run_fusion(
             first_chunk = await final_result.__anext__()
 
             _fusion_model = f"fusion/{preset.name}"
-
-            def _chunk_sse(chunk) -> str:
-                """Serialize a chunk to SSE data, overriding model to fusion/<preset>."""
-                data = json.loads(chunk.model_dump_json())
-                data["model"] = _fusion_model
-                return json.dumps(data)
+            stream_adapter = StreamingAdapter(_fusion_model)
 
             async def stream_generator():
                 completion_text = ""
@@ -190,7 +172,7 @@ async def run_fusion(
                             completion_text += delta.content
                     if getattr(first_chunk, "usage", None):
                         synth_usage = first_chunk.usage
-                    yield f"data: {_chunk_sse(first_chunk)}\n\n"
+                    yield stream_adapter.chunk_sse(first_chunk)
 
                     async for chunk in final_result:
                         if chunk.choices and len(chunk.choices) > 0:
@@ -199,7 +181,7 @@ async def run_fusion(
                                 completion_text += delta.content
                         if getattr(chunk, "usage", None):
                             synth_usage = chunk.usage
-                        yield f"data: {_chunk_sse(chunk)}\n\n"
+                        yield stream_adapter.chunk_sse(chunk)
 
                     # Clean completion: optionally emit an aggregate usage chunk, then [DONE].
                     if wants_usage(request):
@@ -212,8 +194,8 @@ async def run_fusion(
                         if judge_analysis is not None:
                             agg_pt += int(getattr(judge_analysis, "prompt_tokens", 0) or 0)
                             agg_ct += int(getattr(judge_analysis, "completion_tokens", 0) or 0)
-                        yield usage_chunk_sse(_fusion_model, agg_pt, agg_ct)
-                    yield "data: [DONE]\n\n"
+                        yield stream_adapter.usage_sse(agg_pt, agg_ct)
+                    yield stream_adapter.done_sse()
 
                 except Exception as exc:
                     # Mid-stream failure (HTTP 200 already committed). Per the failure
@@ -276,20 +258,12 @@ async def run_fusion(
             # Usage aggregates panel + judge + final by default (preset.usage_reporting).
             usage = _compute_usage(preset, panel_results, judge_analysis, final_result)
             finish_reason = getattr(final_result.choices[0], "finish_reason", "stop")
-            return {
-                "id": f"chatcmpl-{uuid.uuid4()}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": f"fusion/{preset.name}",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": content},
-                        "finish_reason": finish_reason or "stop",
-                    }
-                ],
-                "usage": usage,
-            }
+            return ResponseShaper.chat_completion(
+                model=f"fusion/{preset.name}",
+                content=content,
+                usage=usage,
+                finish_reason=finish_reason,
+            )
 
     except Exception as outer_err:
         wall_ms = int((time.time() - start_time) * 1000)
