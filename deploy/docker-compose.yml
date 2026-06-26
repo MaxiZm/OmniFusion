@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - OMNIFUSION_SECRET_KEY=${OMNIFUSION_SECRET_KEY}
       - OMNIFUSION_ADMIN_PASSWORD=${OMNIFUSION_ADMIN_PASSWORD}
