@@ -19,6 +19,24 @@ OmniFusion exposes OpenAI-compatible routes under both `/v1` and `/api/v1`.
   Their model entries and traces self-label with
   `compat_placeholder - not conductor-backed yet`.
 
+## OpenRouter Plugins Mapping
+
+Chat requests may include an OpenRouter-style `plugins` object. OmniFusion accepts
+only these fields:
+
+- `analysis_models`: replaces the preset panel models for this request.
+- `synthesis_model`: replaces the preset final synthesis model for this request.
+- `web`: accepted as the request-level web-tools enable flag.
+- `max_panel`: caps the panel size for this request.
+
+Request `plugins` override the stored preset only for the current request; the
+preset row is not mutated. `analysis_models` and `synthesis_model` must resolve to
+registered providers or models. Unknown plugin fields are rejected, and
+unregistered plugin models return HTTP 400 with `plugin_model_not_registered`.
+Fusion model references such as `openrouter/fusion`, `openrouter:fusion`, and
+`fusion/*` are blocked for internal panel/judge/synthesis model calls to prevent
+recursive fusion.
+
 ## Responses
 
 `/v1/responses` and `/api/v1/responses` implement a minimal text-compatible

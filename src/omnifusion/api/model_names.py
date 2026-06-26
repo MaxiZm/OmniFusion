@@ -21,6 +21,15 @@ def normalize_requested_model(model: str) -> str:
     return model
 
 
+def is_fusion_model_reference(model: str) -> bool:
+    normalized = model.strip().lower()
+    if normalized in {"openrouter/fusion", "openrouter:fusion"}:
+        return True
+    if normalized in COMPAT_PLACEHOLDER_ALIASES:
+        return True
+    return normalized.startswith(("fusion/", "openai/fusion/"))
+
+
 def model_alias_entries(created: int) -> list[dict]:
     return [
         {

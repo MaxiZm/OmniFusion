@@ -75,6 +75,46 @@ class StreamOptions(BaseModel):
     include_usage: bool = False
 
 
+class FusionPlugins(OpenAIShape):
+    analysis_models: Optional[List[str]] = None
+    synthesis_model: Optional[str] = None
+    web: Optional[bool] = None
+    max_panel: Optional[int] = None
+
+    @field_validator("analysis_models")
+    @classmethod
+    def validate_analysis_models(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return value
+        if not value:
+            raise ValueError("plugins.analysis_models must contain at least one model.")
+        if len(value) > settings.max_panel:
+            raise ValueError(
+                f"plugins.analysis_models must contain at most {settings.max_panel} models."
+            )
+        if any(not model.strip() for model in value):
+            raise ValueError("plugins.analysis_models must not contain empty model names.")
+        return value
+
+    @field_validator("synthesis_model")
+    @classmethod
+    def validate_synthesis_model(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("plugins.synthesis_model must not be empty.")
+        return value
+
+    @field_validator("max_panel")
+    @classmethod
+    def validate_max_panel(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return value
+        if value < 1:
+            raise ValueError("plugins.max_panel must be >= 1.")
+        if value > settings.max_panel:
+            raise ValueError(f"plugins.max_panel must be <= {settings.max_panel}.")
+        return value
+
+
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
@@ -93,6 +133,7 @@ class ChatCompletionRequest(BaseModel):
     frequency_penalty: Optional[float] = None
     parallel_tool_calls: Optional[bool] = None
     service_tier: Optional[str] = None
+    plugins: Optional[FusionPlugins] = None
 
     # We must explicitly reject these with an error
     tools: Optional[List[ToolDefinition]] = None

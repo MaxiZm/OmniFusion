@@ -5,6 +5,7 @@ from .auth import verify_api_key
 from .errors import OmniFusionError
 from .model_names import normalize_requested_model
 from ..fusion.orchestrator import run_fusion
+from ..fusion.plugins import apply_plugins_override
 from ..store.presets import get_or_create_compat_placeholder_preset, get_preset
 from ..settings import settings
 from ..llm.client import llm_client
@@ -278,6 +279,7 @@ async def create_chat_completion(
                 preset = await get_or_create_compat_placeholder_preset(preset_name)
             if not preset:
                 raise OmniFusionError(f"Preset {preset_name} not found", status_code=404)
+            preset = await apply_plugins_override(preset, body.plugins)
 
             # Fix #13: Wrap strategy execution with wall_timeout from settings.
             try:

@@ -9,6 +9,8 @@ from ..ratelimit.circuit_breaker import CircuitOpenError, circuit_breaker
 from ..store.providers import resolve_provider_for_model
 from ..providers.validation import validate_base_url
 from ..providers.capabilities import get_provider_type_from_model, filter_params
+from ..api.errors import OmniFusionError
+from ..api.model_names import is_fusion_model_reference
 
 logger = logging.getLogger("omnifusion.llm")
 
@@ -67,6 +69,14 @@ class LLMClient:
         """
         Wraps litellm.acompletion with rate limiting, timeouts, param filtering, and backoff retries.
         """
+        if is_fusion_model_reference(model):
+            raise OmniFusionError(
+                f"Recursive fusion model invocation is blocked for model '{model}'.",
+                status_code=400,
+                type_="invalid_request_error",
+                code="recursive_fusion_model",
+            )
+
         # 1. Convert Pydantic ChatMessage objects to dicts if they aren't dicts already
         dict_messages = []
         for m in messages:
