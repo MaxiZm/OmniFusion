@@ -95,24 +95,57 @@ def test_mock_full_run_is_not_labeled_tier_c():
     assert real_payload["tier"] == "C"
 
 
-def test_eval_fail_under_gate_exits_nonzero(tmp_path):
-    """[P2] --fail-under makes a real run exit non-zero below the threshold; mock
-    runs are exempt (they're contract checks)."""
+def _run_suite_args(tmp_path, *, mock, fail_under):
     import argparse
 
-    config_path = coding.DEFAULT_CONFIG
     tasks = tmp_path / "tasks.json"
     tasks.write_text('[{"id": "t1", "language": "python", "prompt": "x", "mock_passed": false}]')
-
-    # Mock run with a high threshold still exits 0 (gate does not apply to mocks).
-    mock_args = argparse.Namespace(
-        suite="smoke", config=config_path, tasks=tasks,
-        output=tmp_path / "m.json", mock=True, timeout_s=5, fail_under=0.9, func=None,
+    return argparse.Namespace(
+        suite="smoke",
+        config=coding.DEFAULT_CONFIG,
+        tasks=tasks,
+        output=tmp_path / "out.json",
+        mock=mock,
+        timeout_s=5,
+        fail_under=fail_under,
+        func=None,
     )
-    assert coding.run_suite(mock_args) == 0
 
-    # A non-mock run below threshold would exit 1; simulate via build_payload + the
-    # gate logic by calling run_suite with mock=False is not possible offline, so we
-    # assert the threshold comparison directly on a constructed payload.
-    payload = coding.build_payload("coding-smoke", coding.load_json(config_path), [], mock=False)
-    assert payload["raw"]["pass_rate"] == 0.0  # below any positive --fail-under
+
+def test_fail_under_gate_is_exempt_for_mock_runs(tmp_path):
+    """A mock run with a high threshold still exits 0 (it's a contract check)."""
+    assert coding.run_suite(_run_suite_args(tmp_path, mock=True, fail_under=0.9)) == 0
+
+
+def test_fail_under_gate_returns_one_on_real_run_below_threshold(tmp_path, monkeypatch):
+    """[P3] A REAL (non-mock) run_suite returns 1 when the pass rate is below the
+    threshold, and 0 when it meets it. Patches the live Aider/preflight dependencies
+    so the gate logic itself is exercised offline."""
+    monkeypatch.setattr(coding, "preflight_model_passthrough", lambda config: None)
+
+    def failing_task(config, task, timeout_s):
+        return {
+            "id": task["id"],
+            "language": task["language"],
+            "passed": False,
+            "cost_usd": 0.0,
+            "wall_time_s": 0.0,
+            "driver": "aider",
+            "validation": {"passed": False, "checks": []},
+        }
+
+    monkeypatch.setattr(coding, "run_aider_task", failing_task)
+    # 0/1 passed, threshold 0.5 -> gate trips -> exit 1.
+    assert coding.run_suite(_run_suite_args(tmp_path, mock=False, fail_under=0.5)) == 1
+
+    def passing_task(config, task, timeout_s):
+        result = failing_task(config, task, timeout_s)
+        result["passed"] = True
+        return result
+
+    monkeypatch.setattr(coding, "run_aider_task", passing_task)
+    # 1/1 passed, threshold 0.5 -> gate passes -> exit 0.
+    assert coding.run_suite(_run_suite_args(tmp_path, mock=False, fail_under=0.5)) == 0
+    # No threshold -> exit 0 even if it had failed (report-generation default).
+    monkeypatch.setattr(coding, "run_aider_task", failing_task)
+    assert coding.run_suite(_run_suite_args(tmp_path, mock=False, fail_under=None)) == 0

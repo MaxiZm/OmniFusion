@@ -56,8 +56,10 @@ class StreamingAdapter:
     def done_sse(self) -> str:
         return DONE_SSE
 
-    def tool_call_sse(self, tool_calls):
-        """Yield the SSE sequence for an assistant tool-call response."""
+    def tool_call_sse(self, tool_calls, usage: tuple[int, int] | None = None):
+        """Yield the SSE sequence for an assistant tool-call response. When `usage`
+        (prompt_tokens, completion_tokens) is supplied, emit a terminal usage chunk
+        before [DONE] so a usage-requesting client (incl. /v1/responses) sees it."""
         cid = f"chatcmpl-{uuid.uuid4()}"
         created = int(time.time())
 
@@ -85,4 +87,6 @@ class StreamingAdapter:
         ]
         yield f"data: {json.dumps(chunk({'tool_calls': delta_tcs}))}\n\n"
         yield f"data: {json.dumps(chunk({}, finish='tool_calls'))}\n\n"
+        if usage is not None:
+            yield self.usage_sse(usage[0], usage[1])
         yield self.done_sse()

@@ -345,8 +345,12 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
 
         adapter = StreamingAdapter(f"fusion/{preset.name}")
         if body.stream:
+            # Emit a terminal usage chunk when the client opted in (e.g. /v1/responses
+            # always does), so a tool-call turn still reports usage.
+            stream_usage = (panel_pt, panel_ct) if wants_usage(body) else None
             return StreamingResponse(
-                adapter.tool_call_sse(tool_calls), media_type="text/event-stream"
+                adapter.tool_call_sse(tool_calls, usage=stream_usage),
+                media_type="text/event-stream",
             )
         return ResponseShaper.tool_call_completion(
             model=f"fusion/{preset.name}",

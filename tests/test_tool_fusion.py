@@ -112,3 +112,25 @@ def test_tool_call_sse_is_valid_openai_stream():
         for p in payloads
     )
     assert any(p["choices"][0]["finish_reason"] == "tool_calls" for p in payloads)
+
+
+def test_tool_call_sse_emits_usage_chunk_when_requested():
+    """[P2] A streamed tool-call turn emits a terminal usage chunk when requested."""
+    tcs = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+    events = list(StreamingAdapter("fusion/x").tool_call_sse(tcs, usage=(11, 4)))
+    blob = "".join(events)
+    payloads = [json.loads(e[len("data: "):]) for e in events if e.startswith("data: {")]
+    usage_payloads = [p for p in payloads if p.get("usage")]
+    assert usage_payloads, "no usage chunk emitted"
+    assert usage_payloads[-1]["usage"] == {
+        "prompt_tokens": 11,
+        "completion_tokens": 4,
+        "total_tokens": 15,
+    }
+    assert blob.rstrip().endswith("data: [DONE]")
+
+
+def test_tool_call_sse_omits_usage_by_default():
+    tcs = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+    events = list(StreamingAdapter("fusion/x").tool_call_sse(tcs))
+    assert not any('"usage"' in e for e in events)

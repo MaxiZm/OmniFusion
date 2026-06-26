@@ -198,3 +198,75 @@ async def test_tool_fusion_routes_providers_and_counts_judge_usage(tmp_path, mon
     # The tool-judge call's tokens (5/1) are aggregated with the panel's (10/2).
     assert response["usage"]["prompt_tokens"] == 15
     assert response["usage"]["completion_tokens"] == 3
+
+
+@pytest.mark.asyncio
+async def test_streamed_tool_call_emits_usage_when_requested(tmp_path, monkeypatch):
+    """[P2] A streamed tool-call turn with include_usage emits a terminal usage chunk
+    (so /v1/responses, which always sets include_usage, reports usage)."""
+    import json as _json
+
+    import omnifusion.llm.client as client_mod
+    from omnifusion.api.schemas import StreamOptions
+    from omnifusion.fusion.tool_orchestrator import run_fusion_with_tools
+
+    old_db = settings.db_path
+    settings.db_path = str(tmp_path / "toolstream.db")
+
+    tool_call = {"id": "c1", "type": "function", "function": {"name": "do_thing", "arguments": "{}"}}
+
+    class _TMsg:
+        def __init__(self, content, tool_calls=None):
+            self.content = content
+            self.tool_calls = tool_calls
+
+    class _TChoice:
+        def __init__(self, content, tool_calls=None):
+            self.message = _TMsg(content, tool_calls)
+
+    class _TResp:
+        def __init__(self, content, tool_calls=None, pt=10, ct=2):
+            self.choices = [_TChoice(content, tool_calls)]
+            self.usage = _MockUsage(prompt_tokens=pt, completion_tokens=ct)
+
+    async def fake_acompletion(provider_id, model, messages, **kwargs):
+        if kwargs.get("tools"):
+            return _TResp(None, tool_calls=[tool_call], pt=10, ct=2)
+        return _TResp('{"decision": "tool", "best_index": 0}', pt=5, ct=1)
+
+    try:
+        await init_db()
+        monkeypatch.setattr(client_mod.llm_client, "acompletion", fake_acompletion)
+        stage = PresetStage(max_tokens=16, timeout=5)
+        preset = Preset(
+            name="ts", strategy="B", panel_models=["panel-a"], panel=stage,
+            judge_model="judge-a", judge=stage, final_model="final-a", final=stage,
+        )
+        body = ChatCompletionRequest(
+            model="fusion/ts",
+            messages=[ChatMessage(role="user", content="use a tool")],
+            tools=[{"type": "function", "function": {"name": "do_thing"}}],
+            stream=True,
+            stream_options=StreamOptions(include_usage=True),
+            store=False,
+        )
+        result = await run_fusion_with_tools("toolstream-run", preset, body, "k")
+        blob = ""
+        async for ch in result.body_iterator:
+            blob += ch.decode() if isinstance(ch, bytes) else ch
+    finally:
+        import os
+
+        if os.path.exists(settings.db_path):
+            os.remove(settings.db_path)
+        settings.db_path = old_db
+
+    usage_chunks = [
+        _json.loads(line[len("data: "):])
+        for line in blob.split("\n\n")
+        if line.startswith("data: {") and '"usage"' in line
+    ]
+    assert usage_chunks, "streamed tool-call turn emitted no usage chunk"
+    # panel(10/2) + tool-judge(5/1) aggregated.
+    assert usage_chunks[-1]["usage"]["prompt_tokens"] == 15
+    assert usage_chunks[-1]["usage"]["completion_tokens"] == 3
