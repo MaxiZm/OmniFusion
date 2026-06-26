@@ -1,5 +1,4 @@
 {
-  "scope": "M2-M8 Tier A HTTP contract matrix. Covered cells reference deterministic tests in this repository; Cursor remains reproducible-manual.",
   "clients": [
     "openai-python",
     "openai-node",
@@ -8,6 +7,305 @@
     "continue",
     "cursor-openai-compat"
   ],
+  "matrix": {
+    "aider": {
+      "chat": {
+        "covered_by": [
+          "tests/test_m1b.py",
+          "tests/test_m2_aliases.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "covered_by": [],
+        "reason": "Aider does not require a separate tool-stream cell in this M2 matrix.",
+        "status": "unsupported"
+      },
+      "tools": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "continue": {
+      "chat": {
+        "covered_by": [
+          "tests/test_contract.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "cursor-openai-compat": {
+      "chat": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "errors": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "models": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "stream": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "stream_usage": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "tool_stream": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "tools": {
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      }
+    },
+    "openai-node": {
+      "chat": {
+        "covered_by": [
+          "tests/test_contract.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "openai-python": {
+      "chat": {
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_contract.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "opencode": {
+      "chat": {
+        "covered_by": [
+          "tests/test_contract.py",
+          "tests/test_m8_opencode_loop.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "covered_by": [
+          "tests/test_tool_fusion.py",
+          "tests/test_m8_opencode_loop.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    }
+  },
   "pins": {
     "aider": "aider-chat==0.86.2",
     "continue": "Continue VS Code extension 2.1.0, OpenAI-compatible provider mode",
@@ -16,60 +314,5 @@
     "openai-python": "openai==2.42.0",
     "opencode": "opencode-ai@1.17.11"
   },
-  "matrix": {
-    "aider": {
-      "chat": {"status": "covered", "covered_by": ["tests/test_m1b.py", "tests/test_m2_aliases.py"], "reason": ""},
-      "errors": {"status": "covered", "covered_by": ["tests/test_m2_errors.py"], "reason": ""},
-      "models": {"status": "covered", "covered_by": ["tests/test_m2_routes_models.py"], "reason": ""},
-      "stream": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "stream_usage": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "tool_stream": {"status": "unsupported", "covered_by": [], "reason": "Aider does not require a separate tool-stream cell in this M2 matrix."},
-      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""}
-    },
-    "continue": {
-      "chat": {"status": "covered", "covered_by": ["tests/test_contract.py"], "reason": ""},
-      "errors": {"status": "covered", "covered_by": ["tests/test_m2_errors.py"], "reason": ""},
-      "models": {"status": "covered", "covered_by": ["tests/test_m2_routes_models.py"], "reason": ""},
-      "stream": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "stream_usage": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "tool_stream": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""},
-      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""}
-    },
-    "cursor-openai-compat": {
-      "chat": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."},
-      "errors": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."},
-      "models": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."},
-      "stream": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."},
-      "stream_usage": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."},
-      "tool_stream": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."},
-      "tools": {"status": "manual", "covered_by": [], "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable."}
-    },
-    "openai-node": {
-      "chat": {"status": "covered", "covered_by": ["tests/test_contract.py"], "reason": ""},
-      "errors": {"status": "covered", "covered_by": ["tests/test_m2_errors.py"], "reason": ""},
-      "models": {"status": "covered", "covered_by": ["tests/test_m2_routes_models.py"], "reason": ""},
-      "stream": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "stream_usage": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "tool_stream": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""},
-      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""}
-    },
-    "openai-python": {
-      "chat": {"status": "covered", "covered_by": ["tests/test_contract.py"], "reason": ""},
-      "errors": {"status": "covered", "covered_by": ["tests/test_m2_errors.py"], "reason": ""},
-      "models": {"status": "covered", "covered_by": ["tests/test_m2_routes_models.py"], "reason": ""},
-      "stream": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "stream_usage": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "tool_stream": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""},
-      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""}
-    },
-    "opencode": {
-      "chat": {"status": "covered", "covered_by": ["tests/test_contract.py", "tests/test_m8_opencode_loop.py"], "reason": ""},
-      "errors": {"status": "covered", "covered_by": ["tests/test_m2_errors.py"], "reason": ""},
-      "models": {"status": "covered", "covered_by": ["tests/test_m2_routes_models.py"], "reason": ""},
-      "stream": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "stream_usage": {"status": "covered", "covered_by": ["tests/test_streaming.py"], "reason": ""},
-      "tool_stream": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py"], "reason": ""},
-      "tools": {"status": "covered", "covered_by": ["tests/test_tool_fusion.py", "tests/test_m8_opencode_loop.py"], "reason": ""}
-    }
-  }
+  "scope": "M2-M8 Tier A HTTP contract matrix. Covered cells reference deterministic tests in this repository; Cursor remains reproducible-manual."
 }

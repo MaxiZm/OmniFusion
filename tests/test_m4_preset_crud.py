@@ -121,6 +121,13 @@ async def test_admin_console_save_creates_v2_preset(tmp_path):
             cost_ceiling=1.0,
             on_final_failure="error",
             min_panel_success=1,
+            display_name="Console V2",
+            mode="fusion",
+            web_enabled=True,
+            prompt_global="be concise",
+            prompt_panel="draft",
+            prompt_judge="score",
+            prompt_final="merge",
             session={"user": "admin"},
         )
         saved = await get_preset("console-v2")
@@ -130,5 +137,9 @@ async def test_admin_console_save_creates_v2_preset(tmp_path):
     assert response.status_code == 303
     assert isinstance(saved, Preset)
     assert saved.version == 2
-    assert saved.display_name == "console-v2"
+    # The console now authors the full PresetV2 surface, not just the flat subset.
+    assert saved.display_name == "Console V2"
+    assert saved.web_enabled is True
     assert isinstance(saved.prompts, PresetPrompts)
+    assert saved.prompts.global_prompt == "be concise"
+    assert saved.prompts.role_prompts["judge"] == "score"

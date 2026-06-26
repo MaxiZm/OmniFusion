@@ -33,8 +33,29 @@ def test_client_contract_matrix_has_no_unclassified_cells():
             assert result["status"] in {"covered", "unsupported", "manual"}
             if result["status"] == "covered":
                 assert result["covered_by"], f"{client}/{cell} missing test reference"
+                # The cited test(s) must actually exist on disk — a green status may
+                # not point at a non-existent file.
+                for test_ref in result["covered_by"]:
+                    ref_path = Path(test_ref.split("::", 1)[0])
+                    assert ref_path.exists(), f"{client}/{cell} cites missing {test_ref}"
             else:
                 assert result["reason"], f"{client}/{cell} missing reason"
+
+
+def test_stream_usage_cells_cite_an_include_usage_test():
+    """The stream_usage cells must be backed by a test that actually exercises
+    stream_options.include_usage, not a generic streaming test."""
+    matrix = json.loads(Path("docs/client-contract-matrix.json").read_text())
+    backing_test = Path("tests/test_stream_usage.py")
+    assert backing_test.exists()
+    assert "include_usage" in backing_test.read_text()
+
+    for client, cells in matrix["matrix"].items():
+        cell = cells["stream_usage"]
+        if cell["status"] == "covered":
+            assert "tests/test_stream_usage.py" in cell["covered_by"], (
+                f"{client}/stream_usage must cite the include_usage test"
+            )
 
 
 def test_api_compatibility_doc_publishes_responses_subset_and_alias_status():

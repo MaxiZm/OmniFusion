@@ -21,7 +21,7 @@ from ..store.providers import (
     delete_provider,
 )
 from ..store.presets import list_presets, save_preset, delete_preset
-from ..fusion.types import Preset, PresetStage
+from ..fusion.types import Preset, PresetPrompts, PresetStage
 from ..fusion.runtime.registry import registry as strategy_registry
 from .jobs import job_registry, run_playground_job
 from .csrf import generate_csrf_token
@@ -407,6 +407,13 @@ async def save_preset_route(
     cost_ceiling: float = Form(...),
     on_final_failure: str = Form("error"),
     min_panel_success: int = Form(1),
+    display_name: str = Form(""),
+    mode: str = Form("fusion"),
+    web_enabled: bool = Form(False),
+    prompt_global: str = Form(""),
+    prompt_panel: str = Form(""),
+    prompt_judge: str = Form(""),
+    prompt_final: str = Form(""),
     session=Depends(verify_admin_session),
 ):
     public_strategies = [key for key in strategy_registry.keys() if not key.startswith("_")]
@@ -418,9 +425,22 @@ async def save_preset_route(
             status_code=400,
         )
 
+    role_prompts = {
+        role: text
+        for role, text in (
+            ("panel", prompt_panel),
+            ("judge", prompt_judge),
+            ("final", prompt_final),
+        )
+        if text.strip()
+    }
     preset = Preset(
         name=name,
+        display_name=display_name or name,
+        mode=mode if mode in ("fusion", "fugu_compat") else "fusion",
         strategy=strategy,
+        web_enabled=web_enabled,
+        prompts=PresetPrompts(global_prompt=prompt_global, role_prompts=role_prompts),
         panel_models=panel_models_raw,
         panel=PresetStage(max_tokens=panel_max_tokens, timeout=panel_timeout),
         judge_model=judge_model,

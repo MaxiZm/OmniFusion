@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,54 @@ DEFAULT_RUNS_DIR = Path("evals/coding/runs")
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text())
+
+
+def task_suite_checksum(tasks_path: Path) -> str:
+    """A content checksum of the task manifest, pinned in baseline provenance so a
+    promoted dated artifact records exactly which tasks were run."""
+    return "sha256:" + hashlib.sha256(Path(tasks_path).read_bytes()).hexdigest()
+
+
+def expected_passthrough_model(config: dict[str, Any]) -> str:
+    """The preset a client model name must resolve to (e.g. openai/fusion/general
+    -> fusion/general)."""
+    model = config["model"]
+    if model.startswith("openai/"):
+        model = model[len("openai/") :]
+    return model
+
+
+def preflight_model_passthrough(config: dict[str, Any]) -> None:
+    """The plan requires the smoke to verify model-name pass-through BEFORE any task
+    runs. Posts a single chat request and asserts the configured client model name
+    resolves to the intended fusion preset, aborting the run on mismatch."""
+    base_url = config["base_url"].rstrip("/")
+    api_key = os.environ.get(config["api_key_env"], "")
+    if not api_key:
+        raise RuntimeError(f"{config['api_key_env']} is required for the smoke preflight")
+    body = json.dumps(
+        {
+            "model": config["model"],
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "stream": False,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=body,
+        headers={"content-type": "application/json", "authorization": f"Bearer {api_key}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    expected = expected_passthrough_model(config)
+    actual = payload.get("model")
+    if actual != expected:
+        raise RuntimeError(
+            f"model-name pass-through failed: {config['model']} resolved to "
+            f"{actual!r}, expected {expected!r}"
+        )
 
 
 def task_files(task: dict[str, Any]) -> list[str]:
@@ -194,6 +244,7 @@ def build_payload(
             "config": str(DEFAULT_CONFIG),
             "docs": config.get("docs", {}),
             "generated_by": "python -m omnifusion.evals.coding",
+            "expected_passthrough_model": expected_passthrough_model(config),
         },
     }
 
@@ -280,6 +331,11 @@ def run_suite(args: argparse.Namespace) -> int:
     suite_name = f"coding-{args.suite}"
     if args.suite == "smoke" and len(tasks) > 20:
         raise RuntimeError("coding-smoke must contain at most 20 tasks")
+
+    # The smoke verifies model-name pass-through before any task runs (skipped in
+    # mock mode, which never reaches a live server).
+    if args.suite == "smoke" and not args.mock:
+        preflight_model_passthrough(config)
 
     task_results = []
     for task in tasks:
