@@ -217,7 +217,7 @@ async def run_judge(
         try:
             response = await executor.call(
                 "judge",
-                provider_id="default",
+                provider_id=preset.provider_id_for(preset.judge_model, "judge"),
                 model=preset.judge_model,
                 messages=judge_messages,
                 max_tokens=preset.judge.max_tokens,
@@ -227,7 +227,7 @@ async def run_judge(
             kwargs.pop("response_format", None)
             response = await executor.call(
                 "judge",
-                provider_id="default",
+                provider_id=preset.provider_id_for(preset.judge_model, "judge"),
                 model=preset.judge_model,
                 messages=judge_messages,
                 max_tokens=preset.judge.max_tokens,

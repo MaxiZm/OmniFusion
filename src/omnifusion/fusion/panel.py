@@ -27,7 +27,7 @@ async def run_panelist(
     try:
         response = await BudgetedExecutor(run_id).call(
             f"panel/{model}",
-            provider_id="default",
+            provider_id=preset.provider_id_for(model, "panel"),
             model=model,
             messages=dict_messages,
             timeout=preset.panel.timeout,

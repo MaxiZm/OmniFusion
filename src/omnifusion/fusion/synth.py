@@ -70,7 +70,7 @@ async def run_synthesis(
     if request.stream:
         return await executor.stream(
             "final",
-            provider_id="default",
+            provider_id=preset.provider_id_for(preset.final_model, "final"),
             model=preset.final_model,
             messages=final_messages,
             max_tokens=max_tokens,
@@ -79,7 +79,7 @@ async def run_synthesis(
 
     return await executor.call(
         "final",
-        provider_id="default",
+        provider_id=preset.provider_id_for(preset.final_model, "final"),
         model=preset.final_model,
         messages=final_messages,
         max_tokens=max_tokens,

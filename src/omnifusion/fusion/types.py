@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from typing import List, Optional, Any, Dict, Literal
 from ..settings import settings
 
@@ -67,7 +67,6 @@ class PresetV2(BaseModel):
     version: Literal[2] = 2
     models: List[PresetModel] = Field(default_factory=list)
     prompts: PresetPrompts = Field(default_factory=PresetPrompts)
-    budgets: Optional[PresetBudgets] = None
     bandit: PresetBandit = Field(default_factory=PresetBandit)
     strategy: Literal["B", "conductor"] = "B"
     panel_models: List[str] = Field(default_factory=list)
@@ -98,7 +97,10 @@ class PresetV2(BaseModel):
         data.setdefault("prompts", {})
         data.setdefault("bandit", {})
 
-        budgets = data.get("budgets") or {}
+        # `budgets` is the v2 grouped shape; consume it to populate the flat stage
+        # fields the runtime reads, then drop it (it is re-exposed as a computed
+        # field so it round-trips without being a redundant stored field).
+        budgets = data.pop("budgets", None) or {}
         if budgets:
             data.setdefault("panel", budgets.get("panel"))
             data.setdefault("judge", budgets.get("judge"))
@@ -154,15 +156,6 @@ class PresetV2(BaseModel):
                 },
             ]
 
-        if not data.get("budgets"):
-            data["budgets"] = {
-                "panel": data.get("panel"),
-                "judge": data.get("judge"),
-                "final": data.get("final"),
-                "cost_ceiling": data.get("cost_ceiling"),
-                "min_panel_success": data.get("min_panel_success", 1),
-            }
-
         return data
 
     @field_validator("name", "judge_model", "final_model")
@@ -208,6 +201,33 @@ class PresetV2(BaseModel):
         if self.min_panel_success > len(self.panel_models):
             raise ValueError("min_panel_success cannot exceed panel model count")
         return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def budgets(self) -> Optional[PresetBudgets]:
+        """The v2 grouped budget view, derived from the flat stage fields so it
+        round-trips in serialization without being a redundant stored field."""
+        if self.panel and self.judge and self.final:
+            return PresetBudgets(
+                panel=self.panel,
+                judge=self.judge,
+                final=self.final,
+                cost_ceiling=self.cost_ceiling,
+                min_panel_success=self.min_panel_success,
+            )
+        return None
+
+    def provider_id_for(self, model: str, role: Optional[str] = None) -> str:
+        """Resolve the configured provider for a pool model. Honors the models-pool
+        provider_id (the roadmap-mandated provider_id/role/weight tuple) instead of
+        always assuming 'default'."""
+        for entry in self.models:
+            if entry.model != model:
+                continue
+            if role is not None and entry.role != role:
+                continue
+            return entry.provider_id
+        return "default"
 
 
 class Preset(PresetV2):

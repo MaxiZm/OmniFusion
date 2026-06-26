@@ -9,6 +9,7 @@ from omnifusion.api.errors import InsufficientPanelError, OmniFusionError
 from omnifusion.api.schemas import ChatCompletionRequest
 from omnifusion.budget.ledger import initialize_request_budget
 from omnifusion.fusion.judge import extract_json_from_text
+from omnifusion.fusion.runtime.artifacts import ArtifactGraph
 from omnifusion.fusion.runtime.executor import BudgetedExecutor
 from omnifusion.fusion.runtime.response import ResponseShaper
 from omnifusion.fusion.runtime.context import RunContext
@@ -34,6 +35,7 @@ class ConductorStrategy(FusionStrategy):
             ctx.preset,
             ctx.request,
             ctx.key_hash,
+            artifacts=ctx.artifacts,
         )
 
 
@@ -117,7 +119,9 @@ async def execute_conductor(
     preset: Preset,
     request: ChatCompletionRequest,
     key_hash: str,
+    artifacts: ArtifactGraph | None = None,
 ):
+    artifacts = artifacts if artifacts is not None else ArtifactGraph()
     if request.stream:
         raise OmniFusionError(
             "conductor strategy streaming is not supported yet.",
@@ -145,7 +149,7 @@ async def execute_conductor(
         stage_names.append(stage)
         response = await executor.call(
             stage,
-            provider_id="default",
+            provider_id=preset.provider_id_for(model),
             model=model,
             messages=messages,
             max_tokens=max_tokens,
@@ -286,6 +290,18 @@ async def execute_conductor(
     )
     final_answer = _response_text(merge_response)
     wall_ms = int((time.time() - start_time) * 1000)
+
+    # Record the conductor's stage graph as bounded artifacts so the trace shows
+    # plan/workers/verifier/repairs/merger (M6) without persisting full bodies.
+    artifacts.add("plan_chars", len(plan))
+    artifacts.add(
+        "workers",
+        [{"model": r.model, "status": r.status} for r in worker_results],
+    )
+    artifacts.add("verifier_requested_repair", bool(verifier_data.get("needs_repair", False)))
+    artifacts.add("repair_count", len(repair_texts))
+    artifacts.add("final_chars", len(final_answer))
+
     metadata = trace_metadata_for_preset(preset)
     metadata["conductor"] = {
         "experimental": True,
@@ -294,6 +310,7 @@ async def execute_conductor(
         "repair_count": len(repair_texts),
         "verifier_requested_repair": bool(verifier_data.get("needs_repair", False)),
     }
+    metadata["artifacts"] = artifacts.to_trace_metadata()
     trace = FusionTrace(
         run_id=run_id,
         preset=preset.name,
