@@ -4,6 +4,8 @@ from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
 from argon2 import PasswordHasher
 from typing import List
+from importlib import resources
+from pathlib import Path
 import secrets
 import time
 import uuid
@@ -24,7 +26,13 @@ from .jobs import job_registry, run_playground_job
 from .csrf import generate_csrf_token
 
 router = APIRouter()
-templates = Jinja2Templates(directory="src/omnifusion/web/templates")
+
+
+def template_directory() -> Path:
+    return Path(str(resources.files("omnifusion").joinpath("web", "templates")))
+
+
+templates = Jinja2Templates(directory=str(template_directory()))
 ph = PasswordHasher()
 logger = logging.getLogger("omnifusion.admin")
 

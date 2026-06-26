@@ -1,5 +1,6 @@
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import Dict
 
 
@@ -29,6 +30,28 @@ class TokenBucket:
             await asyncio.sleep(0.05)
 
 
+@dataclass
+class Slot:
+    provider_semaphore: asyncio.Semaphore
+    global_semaphore: asyncio.Semaphore
+    provider_acquired: bool = False
+    global_acquired: bool = False
+
+    def release(self):
+        if self.global_acquired:
+            self.global_semaphore.release()
+            self.global_acquired = False
+        if self.provider_acquired:
+            self.provider_semaphore.release()
+            self.provider_acquired = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.release()
+
+
 class RateLimiter:
     def __init__(self):
         # Global concurrency limit
@@ -55,21 +78,20 @@ class RateLimiter:
 
     async def acquire(self, provider_id: str):
         sem, bucket = await self.get_provider_limiter(provider_id)
+        slot = Slot(provider_semaphore=sem, global_semaphore=self.global_semaphore)
         # 1. Enforce rate limit (token bucket)
         await bucket.wait_consume(1.0)
         # 2. Enforce provider concurrency first (prevents HoL blocking on global sem)
         await sem.acquire()
+        slot.provider_acquired = True
         try:
             # 3. Enforce global concurrency
             await self.global_semaphore.acquire()
+            slot.global_acquired = True
         except BaseException:
-            sem.release()
+            slot.release()
             raise
-
-    def release(self, provider_id: str):
-        if provider_id in self.provider_semaphores:
-            self.provider_semaphores[provider_id].release()
-        self.global_semaphore.release()
+        return slot
 
 
 rate_limiter = RateLimiter()

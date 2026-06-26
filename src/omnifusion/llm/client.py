@@ -4,7 +4,7 @@ import os
 import logging
 import random
 from typing import Optional
-from ..ratelimit.limiter import rate_limiter
+from ..ratelimit.limiter import Slot, rate_limiter
 from ..ratelimit.circuit_breaker import CircuitOpenError, circuit_breaker
 from ..store.providers import resolve_provider_for_model
 from ..providers.validation import validate_base_url
@@ -14,9 +14,9 @@ logger = logging.getLogger("omnifusion.llm")
 
 
 class StreamingResponseWrapper:
-    def __init__(self, response, provider_id: str, chunk_timeout: Optional[float] = None):
+    def __init__(self, response, slot: Slot, chunk_timeout: Optional[float] = None):
         self.response = response
-        self.provider_id = provider_id
+        self.slot = slot
         self.released = False
         # Per-chunk deadline: prevents a stalled upstream stream from hanging
         # indefinitely while holding the per-key/provider concurrency slots. The
@@ -45,7 +45,7 @@ class StreamingResponseWrapper:
 
     def release(self):
         if not self.released:
-            rate_limiter.release(self.provider_id)
+            self.slot.release()
             self.released = True
 
     def __del__(self):
@@ -139,11 +139,8 @@ class LLMClient:
         retries = 3
         backoff = 1.0  # start at 1s
 
-        released_or_delegated = False
-
         for attempt in range(retries + 1):
-            await rate_limiter.acquire(provider_id)
-            released_or_delegated = False
+            slot = await rate_limiter.acquire(provider_id)
             try:
                 if timeout:
                     res = await asyncio.wait_for(
@@ -156,9 +153,9 @@ class LLMClient:
                     # Carry the stage timeout into stream iteration as a per-chunk
                     # deadline so a hung stream can't hold slots indefinitely.
                     wrapped_res = StreamingResponseWrapper(
-                        res, provider_id, chunk_timeout=timeout
+                        res, slot, chunk_timeout=timeout
                     )
-                    released_or_delegated = True
+                    slot = None
                     circuit_breaker.record_success(provider_id)
                     return wrapped_res
                 else:
@@ -185,15 +182,15 @@ class LLMClient:
                         f"Upstream rate limit hit on model {model} (provider {provider_id}). "
                         f"Retrying in {sleep_time:.2f}s... (Attempt {attempt + 1}/{retries})"
                     )
-                    rate_limiter.release(provider_id)
-                    released_or_delegated = True
+                    slot.release()
+                    slot = None
                     await asyncio.sleep(sleep_time)
                 else:
                     circuit_breaker.record_failure(provider_id)
                     raise e
             finally:
-                if not released_or_delegated:
-                    rate_limiter.release(provider_id)
+                if slot is not None:
+                    slot.release()
 
 
 llm_client = LLMClient()
