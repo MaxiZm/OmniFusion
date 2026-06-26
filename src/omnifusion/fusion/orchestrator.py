@@ -6,6 +6,7 @@ from .panel import run_panel
 from .judge import run_judge
 from .synth import run_synthesis
 from ..api.schemas import ChatCompletionRequest
+from ..api.normalize import generation_passthrough_kwargs
 from ..api.sse import wants_usage
 from ..budget.ledger import initialize_request_budget
 from ..store.runs import save_trace
@@ -117,7 +118,8 @@ async def run_fusion_classic(
                     request.messages, web_context.grounding_text
                 )
 
-        # 2. Run Panel (on the web-grounded messages when enabled)
+        # 2. Run Panel (on the web-grounded messages when enabled). Forward caller
+        # generation params (seed/penalties/service_tier) so they take effect.
         panel_results = await run_panel(
             run_id,
             preset,
@@ -125,6 +127,7 @@ async def run_fusion_classic(
             min_success=preset.min_panel_success
             if hasattr(preset, "min_panel_success")
             else 1,
+            extra_kwargs=generation_passthrough_kwargs(request),
         )
 
         # 3. Run Judge

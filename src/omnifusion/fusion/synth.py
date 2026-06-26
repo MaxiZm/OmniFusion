@@ -2,6 +2,7 @@ from typing import List, AsyncGenerator, Union, Any
 from .types import Preset, PanelResult, JudgeAnalysis
 from .runtime.executor import BudgetedExecutor
 from ..api.schemas import ChatCompletionRequest
+from ..api.normalize import generation_passthrough_kwargs
 
 
 async def run_synthesis(
@@ -61,6 +62,9 @@ async def run_synthesis(
     }
     # Filter out None values
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    # Honor caller generation params (seed/penalties/service_tier) on the final
+    # synthesis so e.g. seed-based reproducibility actually reaches the model.
+    kwargs.update(generation_passthrough_kwargs(request))
 
     executor = BudgetedExecutor(run_id)
     if request.stream:

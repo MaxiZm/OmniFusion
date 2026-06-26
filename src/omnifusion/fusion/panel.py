@@ -7,7 +7,11 @@ from .runtime.bandit import select_panel_models
 
 
 async def run_panelist(
-    run_id: str, model: str, preset: Preset, messages: list
+    run_id: str,
+    model: str,
+    preset: Preset,
+    messages: list,
+    extra_kwargs: dict | None = None,
 ) -> PanelResult:
     # 1. Convert messages to dicts
     dict_messages = [
@@ -28,6 +32,7 @@ async def run_panelist(
             messages=dict_messages,
             timeout=preset.panel.timeout,
             max_tokens=preset.panel.max_tokens,
+            **(extra_kwargs or {}),
         )
 
         # 4. Handle response
@@ -52,14 +57,18 @@ async def run_panelist(
 
 
 async def run_panel(
-    run_id: str, preset: Preset, messages: list, min_success: int = 1
+    run_id: str,
+    preset: Preset,
+    messages: list,
+    min_success: int = 1,
+    extra_kwargs: dict | None = None,
 ) -> List[PanelResult]:
     tasks = []
     # Cap panel at max 8
     models = select_panel_models(preset, max_count=8)
 
     for model in models:
-        tasks.append(run_panelist(run_id, model, preset, messages))
+        tasks.append(run_panelist(run_id, model, preset, messages, extra_kwargs))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

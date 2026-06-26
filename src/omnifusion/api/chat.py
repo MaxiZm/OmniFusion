@@ -4,6 +4,7 @@ from .schemas import ChatCompletionRequest
 from .auth import verify_api_key
 from .errors import OmniFusionError
 from .model_names import normalize_requested_model
+from .normalize import generation_passthrough_kwargs
 from ..fusion.orchestrator import run_fusion
 from ..fusion.plugins import apply_plugins_override
 from ..store.presets import get_or_create_compat_placeholder_preset, get_preset
@@ -116,6 +117,9 @@ async def _single_model_completion(
         "max_tokens": body.max_tokens,
         "stop": body.stop,
     }
+    # Forward generation-affecting params (seed/penalties/service_tier/parallel_tool_calls)
+    # so a passthrough caller's request actually takes effect instead of being dropped.
+    call_kwargs.update(generation_passthrough_kwargs(body, include_tool_params=True))
     if extra_kwargs:
         call_kwargs.update(extra_kwargs)
     call_kwargs = {k: v for k, v in call_kwargs.items() if v is not None}

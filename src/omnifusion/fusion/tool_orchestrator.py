@@ -34,6 +34,7 @@ from .types import Preset, PanelResult, JudgeAnalysis, trace_metadata_for_preset
 from ..budget.ledger import initialize_request_budget
 from ..api.errors import InsufficientPanelError
 from ..api.schemas import ChatCompletionRequest
+from ..api.normalize import generation_passthrough_kwargs
 from ..api.sse import wants_usage, usage_chunk_sse
 from .judge import run_judge, extract_json_from_text
 from .synth import run_synthesis
@@ -111,10 +112,11 @@ def _usage_tokens(usage) -> tuple:
     )
 
 
-async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
+async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice, gen_kwargs=None):
     """Each panel model proposes its next action (tool call or text), in parallel."""
 
     executor = BudgetedExecutor(run_id)
+    gen_kwargs = gen_kwargs or {}
 
     async def one(model):
         # Reserve/reconcile is owned by the executor (M3a single-shield invariant):
@@ -129,6 +131,7 @@ async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
                 tool_choice=tool_choice,
                 max_tokens=preset.panel.max_tokens,
                 timeout=preset.panel.timeout,
+                **gen_kwargs,
                 **_disable_thinking_kwargs(model),
             )
             actual = getattr(resp, "_omnifusion_cost_usd", 0.0)
@@ -324,8 +327,11 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     tools = body_dict.get("tools")
     tool_choice = body_dict.get("tool_choice", "auto")
 
-    # 1. Panel proposes next actions (parallel).
-    proposals = await _panel_propose(run_id, preset, dict_messages, tools, tool_choice)
+    # 1. Panel proposes next actions (parallel). Forward caller generation params.
+    gen_kwargs = generation_passthrough_kwargs(body, include_tool_params=True)
+    proposals = await _panel_propose(
+        run_id, preset, dict_messages, tools, tool_choice, gen_kwargs
+    )
     ok = [p for p in proposals if p.get("ok")]
     if not ok:
         raise InsufficientPanelError(
@@ -423,10 +429,12 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     tool_notes = []
     for m in body.messages:
         if m.role == "assistant" and m.tool_calls:
+            # body.messages tool_calls are typed ToolCall objects (M1c), not dicts;
+            # normalize through the shared helper so multi-turn tool context is not
+            # silently dropped from the synthesis prompt.
+            normalized = _normalize_tool_calls(m.tool_calls) or []
             names = ", ".join(
-                str((tc.get("function") or {}).get("name") or "?")
-                for tc in m.tool_calls
-                if isinstance(tc, dict)
+                str(tc["function"].get("name") or "?") for tc in normalized
             )
             if names:
                 tool_notes.append(f"- called tool(s): {names}")
