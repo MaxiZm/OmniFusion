@@ -1,9 +1,10 @@
-.PHONY: dev test test-int lint fmt compose-up compose-down purge export import eval-coding-smoke eval-coding-full
+.PHONY: dev test test-int lint fmt compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-ablation-validate
 
 EVAL_CODING_FLAGS :=
 ifeq ($(EVAL_MOCK),1)
 EVAL_CODING_FLAGS += --mock
 endif
+ABLATION_ARTIFACT :=
 
 dev:
 	uv run uvicorn src.omnifusion.main:app --reload
@@ -48,3 +49,7 @@ eval-coding-full:
 		--tasks evals/coding/full_tasks.json \
 		--output evals/coding/runs/full-latest.json \
 		$(EVAL_CODING_FLAGS)
+
+eval-ablation-validate:
+	@test -n "$(ABLATION_ARTIFACT)" || (echo "Set ABLATION_ARTIFACT=path/to/artifact.json" && exit 2)
+	uv run python -m omnifusion.evals.ablations $(ABLATION_ARTIFACT)
