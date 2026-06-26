@@ -1,0 +1,41 @@
+{
+  "purpose": "External Tier C coding-agent benchmarks driven by their own harnesses.",
+  "suites": [
+    {
+      "id": "swe-bench-lite",
+      "tier": "C",
+      "status": "external_harness_required",
+      "driver": "SWE-bench Lite harness",
+      "operator_command": "Run the SWE-bench Lite harness with its OpenAI-compatible client pointed at OmniFusion /v1.",
+      "mock_allowed": false,
+      "notes": "Record OmniFusion commit, harness version, provider models, pricing, cost, wall time, and raw task results."
+    },
+    {
+      "id": "swe-bench-verified",
+      "tier": "C",
+      "status": "external_harness_required",
+      "driver": "SWE-bench Verified harness",
+      "operator_command": "Run the SWE-bench Verified harness with its OpenAI-compatible client pointed at OmniFusion /v1.",
+      "mock_allowed": false,
+      "notes": "Use only for dated provider evidence; do not derive claims from local mocks."
+    },
+    {
+      "id": "terminal-bench",
+      "tier": "C",
+      "status": "external_harness_required",
+      "driver": "Terminal-Bench harness",
+      "operator_command": "Run Terminal-Bench with OmniFusion configured as the OpenAI-compatible model endpoint.",
+      "mock_allowed": false,
+      "notes": "The terminal execution loop remains owned by the benchmark harness, not by OmniFusion."
+    },
+    {
+      "id": "internal-tool-bench",
+      "tier": "C",
+      "status": "external_harness_required",
+      "driver": "OmniFusion tool-calling micro-bench",
+      "operator_command": "Run the checked-in OpenAI-compatible tool-loop smoke at provider scale and save raw traces.",
+      "mock_allowed": false,
+      "notes": "Use this only for live-provider tool-decision regression and ablation evidence."
+    }
+  ]
+}

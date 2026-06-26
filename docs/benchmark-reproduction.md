@@ -40,6 +40,13 @@ The accepted artifact must include provider/model identifiers, OmniFusion commit
 SHA, Aider version, task-suite checksum, raw pass/fail, wall time, cost,
 confidence intervals, and cost-normalized solve rates.
 
+## External Suites
+
+The external Tier C suite registry lives at
+`evals/coding/external_suites.json`. It names the required external harnesses for
+SWE-bench Lite, SWE-bench Verified, Terminal-Bench, and the internal tool bench.
+These suites are live-provider-only; `mock_allowed` is false for every entry.
+
 ## Current Status
 
 No Tier C benchmark advantage has been measured in this repository yet. The
