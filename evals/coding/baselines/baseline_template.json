@@ -1,0 +1,13 @@
+{
+  "claims": [],
+  "status": "not_run",
+  "summary": "Template only. No provider baseline has been measured.",
+  "required_provenance": {
+    "aider_chat_version": null,
+    "commit_sha": null,
+    "config": "evals/coding/aider_config.json",
+    "model": null,
+    "raw_run_artifact": null,
+    "task_suite_checksum": null
+  }
+}

@@ -1,4 +1,9 @@
-.PHONY: dev test test-int lint fmt compose-up compose-down purge export import
+.PHONY: dev test test-int lint fmt compose-up compose-down purge export import eval-coding-smoke eval-coding-full
+
+EVAL_CODING_FLAGS :=
+ifeq ($(EVAL_MOCK),1)
+EVAL_CODING_FLAGS += --mock
+endif
 
 dev:
 	uv run uvicorn src.omnifusion.main:app --reload
@@ -30,3 +35,16 @@ export:
 import:
 	uv run python -m src.omnifusion.cli import
 
+eval-coding-smoke:
+	uv run python -m omnifusion.evals.coding smoke \
+		--config evals/coding/aider_config.json \
+		--tasks evals/coding/smoke_tasks.json \
+		--output evals/coding/runs/smoke-latest.json \
+		$(EVAL_CODING_FLAGS)
+
+eval-coding-full:
+	uv run python -m omnifusion.evals.coding full \
+		--config evals/coding/aider_config.json \
+		--tasks evals/coding/full_tasks.json \
+		--output evals/coding/runs/full-latest.json \
+		$(EVAL_CODING_FLAGS)

@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from .schemas import ChatCompletionRequest
 from .auth import verify_api_key
 from .errors import OmniFusionError
+from .model_names import normalize_requested_model
 from ..fusion.orchestrator import run_fusion
 from ..fusion.tool_orchestrator import run_fusion_with_tools
 from ..store.presets import get_preset
@@ -252,6 +253,10 @@ async def create_chat_completion(
     request.state.run_id = run_id
     response.headers["X-OmniFusion-Run-Id"] = run_id
     set_run_id(run_id)
+
+    normalized_model = normalize_requested_model(body.model)
+    if normalized_model != body.model:
+        body = body.model_copy(update={"model": normalized_model})
 
     # Fix #11: Acquire per-key concurrency slot
     sem = None

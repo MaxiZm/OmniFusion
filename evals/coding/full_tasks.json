@@ -1,0 +1,266 @@
+[
+  {
+    "expected": [
+      {"contains": "return a - b", "path": "python/subtract.py"}
+    ],
+    "files": [
+      {"content": "def subtract(a, b):\n    raise NotImplementedError\n", "path": "python/subtract.py"}
+    ],
+    "id": "full-python-subtract",
+    "language": "python",
+    "prompt": "Implement subtract so it returns a minus b."
+  },
+  {
+    "expected": [
+      {"contains": "return a * b", "path": "python/multiply.py"}
+    ],
+    "files": [
+      {"content": "def multiply(a, b):\n    raise NotImplementedError\n", "path": "python/multiply.py"}
+    ],
+    "id": "full-python-multiply",
+    "language": "python",
+    "prompt": "Implement multiply so it returns a times b."
+  },
+  {
+    "expected": [
+      {"contains": "return text[::-1]", "path": "python/reverse_text.py"}
+    ],
+    "files": [
+      {"content": "def reverse_text(text):\n    raise NotImplementedError\n", "path": "python/reverse_text.py"}
+    ],
+    "id": "full-python-reverse-text",
+    "language": "python",
+    "prompt": "Implement reverse_text so it returns text reversed."
+  },
+  {
+    "expected": [
+      {"contains": "return len(items)", "path": "python/count_items.py"}
+    ],
+    "files": [
+      {"content": "def count_items(items):\n    raise NotImplementedError\n", "path": "python/count_items.py"}
+    ],
+    "id": "full-python-count-items",
+    "language": "python",
+    "prompt": "Implement count_items so it returns the number of items."
+  },
+  {
+    "expected": [
+      {"contains": "return value * value", "path": "javascript/square.js"}
+    ],
+    "files": [
+      {"content": "export function square(value) {\n  throw new Error('todo');\n}\n", "path": "javascript/square.js"}
+    ],
+    "id": "full-javascript-square",
+    "language": "javascript",
+    "prompt": "Implement square so it returns value multiplied by itself."
+  },
+  {
+    "expected": [
+      {"contains": "return items.length", "path": "javascript/count.js"}
+    ],
+    "files": [
+      {"content": "export function count(items) {\n  throw new Error('todo');\n}\n", "path": "javascript/count.js"}
+    ],
+    "id": "full-javascript-count",
+    "language": "javascript",
+    "prompt": "Implement count so it returns items.length."
+  },
+  {
+    "expected": [
+      {"contains": "return text.split", "path": "javascript/reverse.js"}
+    ],
+    "files": [
+      {"content": "export function reverse(text) {\n  throw new Error('todo');\n}\n", "path": "javascript/reverse.js"}
+    ],
+    "id": "full-javascript-reverse",
+    "language": "javascript",
+    "prompt": "Implement reverse so it returns the reversed string."
+  },
+  {
+    "expected": [
+      {"contains": "return a - b", "path": "javascript/subtract.js"}
+    ],
+    "files": [
+      {"content": "export function subtract(a, b) {\n  throw new Error('todo');\n}\n", "path": "javascript/subtract.js"}
+    ],
+    "id": "full-javascript-subtract",
+    "language": "javascript",
+    "prompt": "Implement subtract so it returns a minus b."
+  },
+  {
+    "expected": [
+      {"contains": "return a - b", "path": "go/subtract.go"}
+    ],
+    "files": [
+      {"content": "package mathx\n\nfunc Subtract(a int, b int) int {\n\tpanic(\"todo\")\n}\n", "path": "go/subtract.go"}
+    ],
+    "id": "full-go-subtract",
+    "language": "go",
+    "prompt": "Implement Subtract so it returns a minus b."
+  },
+  {
+    "expected": [
+      {"contains": "return value * value", "path": "go/square.go"}
+    ],
+    "files": [
+      {"content": "package mathx\n\nfunc Square(value int) int {\n\tpanic(\"todo\")\n}\n", "path": "go/square.go"}
+    ],
+    "id": "full-go-square",
+    "language": "go",
+    "prompt": "Implement Square so it returns value multiplied by itself."
+  },
+  {
+    "expected": [
+      {"contains": "return len(items)", "path": "go/count.go"}
+    ],
+    "files": [
+      {"content": "package count\n\nfunc Count(items []int) int {\n\tpanic(\"todo\")\n}\n", "path": "go/count.go"}
+    ],
+    "id": "full-go-count",
+    "language": "go",
+    "prompt": "Implement Count so it returns len(items)."
+  },
+  {
+    "expected": [
+      {"contains": "return a * b", "path": "go/multiply.go"}
+    ],
+    "files": [
+      {"content": "package mathx\n\nfunc Multiply(a int, b int) int {\n\tpanic(\"todo\")\n}\n", "path": "go/multiply.go"}
+    ],
+    "id": "full-go-multiply",
+    "language": "go",
+    "prompt": "Implement Multiply so it returns a times b."
+  },
+  {
+    "expected": [
+      {"contains": "return a - b", "path": "java/MathBox.java"}
+    ],
+    "files": [
+      {"content": "class MathBox {\n  static int subtract(int a, int b) {\n    throw new UnsupportedOperationException();\n  }\n}\n", "path": "java/MathBox.java"}
+    ],
+    "id": "full-java-subtract",
+    "language": "java",
+    "prompt": "Implement subtract so it returns a minus b."
+  },
+  {
+    "expected": [
+      {"contains": "return value * value", "path": "java/Square.java"}
+    ],
+    "files": [
+      {"content": "class Square {\n  static int square(int value) {\n    throw new UnsupportedOperationException();\n  }\n}\n", "path": "java/Square.java"}
+    ],
+    "id": "full-java-square",
+    "language": "java",
+    "prompt": "Implement square so it returns value multiplied by itself."
+  },
+  {
+    "expected": [
+      {"contains": "return items.length", "path": "java/Counter.java"}
+    ],
+    "files": [
+      {"content": "class Counter {\n  static int count(int[] items) {\n    throw new UnsupportedOperationException();\n  }\n}\n", "path": "java/Counter.java"}
+    ],
+    "id": "full-java-count",
+    "language": "java",
+    "prompt": "Implement count so it returns items.length."
+  },
+  {
+    "expected": [
+      {"contains": "return input.trim", "path": "java/Trim.java"}
+    ],
+    "files": [
+      {"content": "class Trim {\n  static String trim(String input) {\n    throw new UnsupportedOperationException();\n  }\n}\n", "path": "java/Trim.java"}
+    ],
+    "id": "full-java-trim",
+    "language": "java",
+    "prompt": "Implement trim so it returns input.trim()."
+  },
+  {
+    "expected": [
+      {"contains": "a - b", "path": "rust/src/subtract.rs"}
+    ],
+    "files": [
+      {"content": "pub fn subtract(a: i32, b: i32) -> i32 {\n    todo!()\n}\n", "path": "rust/src/subtract.rs"}
+    ],
+    "id": "full-rust-subtract",
+    "language": "rust",
+    "prompt": "Implement subtract so it returns a minus b."
+  },
+  {
+    "expected": [
+      {"contains": "value * value", "path": "rust/src/square.rs"}
+    ],
+    "files": [
+      {"content": "pub fn square(value: i32) -> i32 {\n    todo!()\n}\n", "path": "rust/src/square.rs"}
+    ],
+    "id": "full-rust-square",
+    "language": "rust",
+    "prompt": "Implement square so it returns value multiplied by itself."
+  },
+  {
+    "expected": [
+      {"contains": "items.len()", "path": "rust/src/count.rs"}
+    ],
+    "files": [
+      {"content": "pub fn count(items: &[i32]) -> usize {\n    todo!()\n}\n", "path": "rust/src/count.rs"}
+    ],
+    "id": "full-rust-count",
+    "language": "rust",
+    "prompt": "Implement count so it returns items.len()."
+  },
+  {
+    "expected": [
+      {"contains": "input.trim()", "path": "rust/src/trim.rs"}
+    ],
+    "files": [
+      {"content": "pub fn trim(input: &str) -> &str {\n    todo!()\n}\n", "path": "rust/src/trim.rs"}
+    ],
+    "id": "full-rust-trim",
+    "language": "rust",
+    "prompt": "Implement trim so it returns input.trim()."
+  },
+  {
+    "expected": [
+      {"contains": "return a - b", "path": "cpp/subtract.cpp"}
+    ],
+    "files": [
+      {"content": "int subtract(int a, int b) {\n  throw \"todo\";\n}\n", "path": "cpp/subtract.cpp"}
+    ],
+    "id": "full-cpp-subtract",
+    "language": "cpp",
+    "prompt": "Implement subtract so it returns a minus b."
+  },
+  {
+    "expected": [
+      {"contains": "return a * b", "path": "cpp/multiply.cpp"}
+    ],
+    "files": [
+      {"content": "int multiply(int a, int b) {\n  throw \"todo\";\n}\n", "path": "cpp/multiply.cpp"}
+    ],
+    "id": "full-cpp-multiply",
+    "language": "cpp",
+    "prompt": "Implement multiply so it returns a times b."
+  },
+  {
+    "expected": [
+      {"contains": "return items.size()", "path": "cpp/count.cpp"}
+    ],
+    "files": [
+      {"content": "#include <vector>\n\nint count(const std::vector<int>& items) {\n  throw \"todo\";\n}\n", "path": "cpp/count.cpp"}
+    ],
+    "id": "full-cpp-count",
+    "language": "cpp",
+    "prompt": "Implement count so it returns items.size()."
+  },
+  {
+    "expected": [
+      {"contains": "return input.empty()", "path": "cpp/empty.cpp"}
+    ],
+    "files": [
+      {"content": "#include <string>\n\nbool is_empty(const std::string& input) {\n  throw \"todo\";\n}\n", "path": "cpp/empty.cpp"}
+    ],
+    "id": "full-cpp-empty",
+    "language": "cpp",
+    "prompt": "Implement is_empty so it returns input.empty()."
+  }
+]

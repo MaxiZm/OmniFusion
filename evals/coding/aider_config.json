@@ -1,0 +1,12 @@
+{
+  "aider_chat_version": "0.86.2",
+  "api_key_env": "OPENAI_API_KEY",
+  "base_url": "http://localhost:8000/v1",
+  "base_url_env": "OPENAI_API_BASE",
+  "docs": {
+    "leaderboard": "https://aider.chat/docs/leaderboards/",
+    "openai_compat": "https://aider.chat/docs/llms/openai-compat.html",
+    "options": "https://aider.chat/docs/config/options.html"
+  },
+  "model": "openai/fusion/general"
+}

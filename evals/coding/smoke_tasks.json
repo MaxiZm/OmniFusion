@@ -1,0 +1,104 @@
+[
+  {
+    "expected": [
+      {
+        "contains": "return a + b",
+        "path": "python/add_numbers.py"
+      }
+    ],
+    "files": [
+      {
+        "content": "def add_numbers(a, b):\n    raise NotImplementedError\n",
+        "path": "python/add_numbers.py"
+      }
+    ],
+    "id": "smoke-python-add",
+    "language": "python",
+    "prompt": "Implement add_numbers so it returns the sum of a and b."
+  },
+  {
+    "expected": [
+      {
+        "contains": "return items.filter",
+        "path": "javascript/filter_even.js"
+      }
+    ],
+    "files": [
+      {
+        "content": "export function filterEven(items) {\n  throw new Error('todo');\n}\n",
+        "path": "javascript/filter_even.js"
+      }
+    ],
+    "id": "smoke-javascript-filter-even",
+    "language": "javascript",
+    "prompt": "Implement filterEven so it returns only even numbers from items."
+  },
+  {
+    "expected": [
+      {
+        "contains": "return a + b",
+        "path": "go/sum.go"
+      }
+    ],
+    "files": [
+      {
+        "content": "package sum\n\nfunc Sum(a int, b int) int {\n\tpanic(\"todo\")\n}\n",
+        "path": "go/sum.go"
+      }
+    ],
+    "id": "smoke-go-sum",
+    "language": "go",
+    "prompt": "Implement Sum so it returns the sum of a and b."
+  },
+  {
+    "expected": [
+      {
+        "contains": "return input.toUpperCase",
+        "path": "java/Formatter.java"
+      }
+    ],
+    "files": [
+      {
+        "content": "class Formatter {\n  static String shout(String input) {\n    throw new UnsupportedOperationException();\n  }\n}\n",
+        "path": "java/Formatter.java"
+      }
+    ],
+    "id": "smoke-java-shout",
+    "language": "java",
+    "prompt": "Implement shout so it returns the uppercase version of input."
+  },
+  {
+    "expected": [
+      {
+        "contains": "a + b",
+        "path": "rust/src/lib.rs"
+      }
+    ],
+    "files": [
+      {
+        "content": "pub fn add(a: i32, b: i32) -> i32 {\n    todo!()\n}\n",
+        "path": "rust/src/lib.rs"
+      }
+    ],
+    "id": "smoke-rust-add",
+    "language": "rust",
+    "prompt": "Implement add so it returns the sum of a and b."
+  },
+  {
+    "expected": [
+      {
+        "contains": "return value * value",
+        "path": "cpp/square.cpp"
+      }
+    ],
+    "files": [
+      {
+        "content": "int square(int value) {\n  throw \"todo\";\n}\n",
+        "path": "cpp/square.cpp"
+      }
+    ],
+    "id": "smoke-cpp-square",
+    "language": "cpp",
+    "prompt": "Implement square so it returns value multiplied by itself."
+  }
+]
