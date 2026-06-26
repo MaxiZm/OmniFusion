@@ -1,5 +1,6 @@
 from typing import List, Optional, Any, Union, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from .normalize import normalize_content
 from ..settings import settings
 
 
@@ -45,12 +46,13 @@ class FunctionToolChoice(OpenAIShape):
 
 
 ToolChoice = Union[Literal["none", "auto", "required"], FunctionToolChoice]
+LegacyFunctionCall = Union[Literal["none", "auto"], ToolChoiceFunctionRef]
 
 
 class ChatMessage(BaseModel):
     # "tool" is required for the agentic loop (tool-result messages). Assistant
     # messages that only carry tool_calls have null content, so content is optional.
-    role: Literal["system", "user", "assistant", "tool"]
+    role: Literal["system", "developer", "user", "assistant", "tool"]
     content: Optional[str] = None
     # Tool-calling passthrough fields (OpenAI shape) — forwarded to the model.
     tool_calls: Optional[List[ToolCall]] = None
@@ -59,15 +61,10 @@ class ChatMessage(BaseModel):
 
     @field_validator("content", mode="before")
     def validate_content(cls, v):
-        if v is None:
-            return None
-        if not isinstance(v, str):
-            raise ValueError(
-                "content must be a string. Multimodal/array parts are not supported."
-            )
+        v = normalize_content(v)
         # Fix #12: Enforce per-message content size limit
         max_chars = settings.omnifusion_max_content_chars
-        if len(v) > max_chars:
+        if v is not None and len(v) > max_chars:
             raise ValueError(
                 f"Message content exceeds maximum allowed length of {max_chars} characters."
             )
@@ -84,30 +81,35 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
     stop: Optional[Union[str, List[str]]] = None
     stream: bool = False
     stream_options: Optional[StreamOptions] = None
     store: bool = False
     user: Optional[str] = None
+    metadata: Optional[dict[str, JsonValue]] = None
+    seed: Optional[int] = None
+    presence_penalty: Optional[float] = None
+    frequency_penalty: Optional[float] = None
+    parallel_tool_calls: Optional[bool] = None
+    service_tier: Optional[str] = None
 
     # We must explicitly reject these with an error
     tools: Optional[List[ToolDefinition]] = None
     tool_choice: Optional[ToolChoice] = None
-    functions: Optional[Any] = None
-    function_call: Optional[Any] = None
+    functions: Optional[List[FunctionToolSpec]] = None
+    function_call: Optional[LegacyFunctionCall] = None
     audio: Optional[Any] = None
     n: Optional[int] = None
     logprobs: Optional[Any] = None
     response_format: Optional[Any] = None
     reasoning_effort: Optional[Any] = None
 
-    # NOTE: `tools` and `tool_choice` are intentionally NOT rejected — when present,
+    # NOTE: `tools` and `tool_choice` are intentionally accepted — when present,
     # the request is routed to a single tool-capable model (see api/chat.py) so
-    # agentic clients like OpenCode work. The legacy `functions`/`function_call`
-    # pair is still rejected (use `tools`).
+    # agentic clients like OpenCode work. Legacy `functions`/`function_call`
+    # are normalized to the equivalent tool shape in M2.
     @field_validator(
-        "functions",
-        "function_call",
         "audio",
         "logprobs",
         "response_format",
@@ -126,7 +128,7 @@ class ChatCompletionRequest(BaseModel):
             raise ValueError("n > 1 is not supported in OmniFusion API.")
         return v
 
-    @field_validator("max_tokens")
+    @field_validator("max_tokens", "max_completion_tokens")
     def validate_max_tokens(cls, v):
         # Fix #12: Reject zero or negative max_tokens; enforce upper bound
         if v is not None:
@@ -139,12 +141,49 @@ class ChatCompletionRequest(BaseModel):
                 )
         return v
 
+    @field_validator("presence_penalty", "frequency_penalty")
+    def validate_penalties(cls, v, info):
+        if v is not None and not -2 <= v <= 2:
+            raise ValueError(f"{info.field_name} must be between -2 and 2.")
+        return v
+
     @model_validator(mode="after")
-    def validate_messages_count(self):
+    def validate_and_normalize(self):
         # Fix #12: Enforce message list size limit
         max_msgs = settings.omnifusion_max_messages
         if len(self.messages) > max_msgs:
             raise ValueError(
                 f"messages list length {len(self.messages)} exceeds maximum of {max_msgs}."
             )
+
+        if (
+            self.max_tokens is not None
+            and self.max_completion_tokens is not None
+            and self.max_tokens != self.max_completion_tokens
+        ):
+            raise ValueError("max_tokens and max_completion_tokens must match if both are set.")
+        if self.max_tokens is None and self.max_completion_tokens is not None:
+            self.max_tokens = self.max_completion_tokens
+
+        self.messages = [
+            message.model_copy(update={"role": "system"})
+            if message.role == "developer"
+            else message
+            for message in self.messages
+        ]
+
+        if self.functions and not self.tools:
+            self.tools = [
+                ToolDefinition(type="function", function=function)
+                for function in self.functions
+            ]
+
+        if self.function_call is not None and self.tool_choice is None:
+            if isinstance(self.function_call, str):
+                self.tool_choice = self.function_call
+            else:
+                self.tool_choice = FunctionToolChoice(
+                    type="function",
+                    function=self.function_call,
+                )
         return self

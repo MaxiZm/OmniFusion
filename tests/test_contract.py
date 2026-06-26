@@ -155,18 +155,18 @@ async def test_request_validation_rejection(setup_settings_and_db):
 
     headers = {"Authorization": "Bearer test-token-1"}
 
-    # Rejects legacy `functions` (use `tools` instead). NOTE: `tools`/`tool_choice`
-    # are now ACCEPTED — they route to a tool-capable model (agentic clients).
+    # Rejects unsupported provider-specific fields. `functions` is normalized to
+    # `tools` in M2, so keep this coverage on fields that remain unsupported.
     req_body = {
         "model": "fusion/testpreset",
         "messages": [{"role": "user", "content": "hello"}],
-        "functions": [{"name": "test"}],
+        "audio": {"voice": "alloy"},
     }
     response = client.post("/v1/chat/completions", headers=headers, json=req_body)
     assert response.status_code == 400
     err_data = response.json()
     assert "error" in err_data
-    assert "functions" in err_data["error"]["message"]
+    assert "audio" in err_data["error"]["message"]
 
     # Rejects n > 1
     req_body = {

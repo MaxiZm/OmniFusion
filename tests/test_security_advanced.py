@@ -720,17 +720,16 @@ async def test_custom_provider_model_is_canonicalized():
 # ─── P2: legacy/unsupported request fields must be rejected, not dropped ──────
 
 
-@pytest.mark.parametrize("field", ["functions", "function_call", "audio", "logprobs"])
+@pytest.mark.parametrize("field", ["audio", "logprobs"])
 def test_unsupported_request_field_rejected(field):
-    """Legacy/unsupported provider-specific fields must raise instead of being
-    silently ignored by pydantic. (tools/tool_choice are accepted — see
-    test_tools_fields_accepted — they route to a tool-capable model.)"""
+    """Unsupported provider-specific fields must raise instead of being silently
+    ignored by pydantic."""
     from pydantic import ValidationError
 
     payload = {
         "model": "fusion/x",
         "messages": [{"role": "user", "content": "hi"}],
-        field: [{"name": "do_thing"}] if field == "functions" else "x",
+        field: "x",
     }
     with pytest.raises(ValidationError):
         ChatCompletionRequest(**payload)
@@ -776,4 +775,3 @@ def test_agentic_tool_loop_message_shapes_accepted():
     # exclude_none keeps tool fields off normal turns but on tool/assistant turns
     assert "tool_calls" not in req.messages[0].model_dump(exclude_none=True)
     assert req.messages[2].model_dump(exclude_none=True)["tool_call_id"] == "c1"
-
