@@ -18,7 +18,10 @@ Synthesize the final answer. Speak directly to the user as if you are the sole A
 --- START OF JUDGE_ANALYSIS (ID: {{ nonce }}) ---
 Consensus: {{ judge_analysis.consensus }}
 Disagreements: {{ judge_analysis.disagreements }}
+Contradictions: {{ judge_analysis.contradictions }}
+Partial Coverage: {{ judge_analysis.partial_coverage }}
+Blind Spots: {{ judge_analysis.blind_spots }}
 Likely Errors: {{ judge_analysis.likely_errors }}
 Missing Information: {{ judge_analysis.missing_information }}
-Recommended Plan: {{ judge_analysis.recommended_final_answer_plan }}
+Recommended Plan: {{ judge_analysis.synthesis_plan or judge_analysis.recommended_final_answer_plan }}
 --- END OF JUDGE_ANALYSIS (ID: {{ nonce }}) ---

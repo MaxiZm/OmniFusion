@@ -215,6 +215,12 @@ class PanelResult(BaseModel):
 class JudgeAnalysis(BaseModel):
     consensus: str = ""
     disagreements: str = ""
+    contradictions: str = ""
+    partial_coverage: str = ""
+    unique_insights: Dict[str, List[str]] = Field(default_factory=dict)
+    blind_spots: str = ""
+    model_strengths: Dict[str, str] = Field(default_factory=dict)
+    synthesis_plan: str = ""
     strongest_points_by_model: Dict[str, str] = Field(default_factory=dict)
     missing_information: str = ""
     likely_errors: str = ""

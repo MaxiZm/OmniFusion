@@ -203,6 +203,7 @@ async def run_judge(
         # gemini), and the explicit retry below covers any model that rejects it.
         kwargs = {
             "timeout": preset.judge.timeout,
+            "temperature": 0,
             "response_format": {"type": "json_object"},
         }
 
@@ -238,12 +239,22 @@ async def run_judge(
             data = extract_json_from_text(content)
             analysis = JudgeAnalysis(
                 consensus=data.get("consensus", ""),
-                disagreements=data.get("disagreements", ""),
+                disagreements=data.get("disagreements", data.get("contradictions", "")),
+                contradictions=data.get("contradictions", data.get("disagreements", "")),
+                partial_coverage=data.get("partial_coverage", ""),
+                unique_insights=data.get("unique_insights", {}),
+                blind_spots=data.get("blind_spots", ""),
+                model_strengths=data.get("model_strengths", {}),
                 strongest_points_by_model=data.get("strongest_points_by_model", {}),
                 missing_information=data.get("missing_information", ""),
                 likely_errors=data.get("likely_errors", ""),
+                synthesis_plan=data.get(
+                    "synthesis_plan",
+                    data.get("recommended_final_answer_plan", ""),
+                ),
                 recommended_final_answer_plan=data.get(
-                    "recommended_final_answer_plan", ""
+                    "recommended_final_answer_plan",
+                    data.get("synthesis_plan", ""),
                 ),
                 cost_usd=actual_cost_usd,
                 prompt_tokens=judge_prompt_tokens,
