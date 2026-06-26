@@ -3,6 +3,7 @@ from typing import List
 from .types import Preset, PanelResult, role_prompt_content
 from ..api.errors import InsufficientPanelError, BudgetExceededError
 from .runtime.executor import BudgetedExecutor
+from .runtime.bandit import select_panel_models
 
 
 async def run_panelist(
@@ -55,7 +56,7 @@ async def run_panel(
 ) -> List[PanelResult]:
     tasks = []
     # Cap panel at max 8
-    models = preset.panel_models[:8]
+    models = select_panel_models(preset, max_count=8)
 
     for model in models:
         tasks.append(run_panelist(run_id, model, preset, messages))

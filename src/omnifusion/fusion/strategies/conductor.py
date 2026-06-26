@@ -13,6 +13,7 @@ from omnifusion.fusion.runtime.executor import BudgetedExecutor
 from omnifusion.fusion.runtime.response import ResponseShaper
 from omnifusion.fusion.runtime.context import RunContext
 from omnifusion.fusion.runtime.strategy import FusionStrategy
+from omnifusion.fusion.runtime.bandit import select_panel_models
 from omnifusion.fusion.types import (
     FusionTrace,
     JudgeAnalysis,
@@ -200,7 +201,7 @@ async def execute_conductor(
             return PanelResult(model=model, status="error")
 
     worker_results = await asyncio.gather(
-        *[run_worker(model) for model in preset.panel_models]
+        *[run_worker(model) for model in select_panel_models(preset, max_count=8)]
     )
     ok_workers = [result for result in worker_results if result.status == "ok"]
     if len(ok_workers) < preset.min_panel_success:

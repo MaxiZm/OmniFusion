@@ -55,6 +55,11 @@ class PresetBudgets(BaseModel):
     min_panel_success: int = 1
 
 
+class PresetBandit(BaseModel):
+    enabled: bool = False
+    exploration: float = Field(default=0.5, ge=0)
+
+
 class PresetV2(BaseModel):
     name: str
     display_name: Optional[str] = None
@@ -63,6 +68,7 @@ class PresetV2(BaseModel):
     models: List[PresetModel] = Field(default_factory=list)
     prompts: PresetPrompts = Field(default_factory=PresetPrompts)
     budgets: Optional[PresetBudgets] = None
+    bandit: PresetBandit = Field(default_factory=PresetBandit)
     strategy: Literal["B", "conductor"] = "B"
     panel_models: List[str] = Field(default_factory=list)
     panel: Optional[PresetStage] = None
@@ -87,6 +93,7 @@ class PresetV2(BaseModel):
         data.setdefault("display_name", data.get("name"))
         data.setdefault("mode", "fusion")
         data.setdefault("prompts", {})
+        data.setdefault("bandit", {})
 
         budgets = data.get("budgets") or {}
         if budgets:
