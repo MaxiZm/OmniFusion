@@ -1,4 +1,4 @@
-.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-ablation-validate
+.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-tool-smoke eval-ablation-validate
 
 EVAL_CODING_FLAGS :=
 ifeq ($(EVAL_MOCK),1)
@@ -55,6 +55,13 @@ eval-coding-full:
 		--config evals/coding/aider_config.json \
 		--tasks evals/coding/full_tasks.json \
 		--output evals/coding/runs/full-latest.json \
+		$(EVAL_CODING_FLAGS)
+
+eval-tool-smoke:
+	uv run python -m omnifusion.evals.tools \
+		--config evals/coding/aider_config.json \
+		--tasks evals/coding/tool_tasks.json \
+		--output evals/coding/runs/tool-smoke-latest.json \
 		$(EVAL_CODING_FLAGS)
 
 eval-ablation-validate:
