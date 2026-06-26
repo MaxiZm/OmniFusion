@@ -197,6 +197,80 @@ def build_payload(
     }
 
 
+def _report_paths(output_path: Path) -> dict[str, str]:
+    return {
+        "json": str(output_path),
+        "jsonl": str(output_path.with_suffix(".jsonl")),
+        "markdown": str(output_path.with_suffix(".md")),
+    }
+
+
+def write_jsonl_report(path: Path, payload: dict[str, Any]) -> None:
+    rows = [
+        {
+            "type": "task_result",
+            "suite": payload["suite"],
+            "model": payload["model"],
+            "task": task,
+        }
+        for task in payload["tasks"]
+    ]
+    path.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n"
+    )
+
+
+def render_markdown_report(payload: dict[str, Any]) -> str:
+    raw = payload["raw"]
+    ci = raw.get("confidence_interval", {})
+    cost_norm = raw.get("cost_normalization", {})
+    ci_text = (
+        f"{ci.get('lower', 0.0):.4f}-{ci.get('upper', 0.0):.4f} "
+        f"({ci.get('method', 'n/a')})"
+    )
+    lines = [
+        "# OmniFusion Coding Full Report",
+        "",
+        "| Metric | Value |",
+        "| --- | --- |",
+        f"| Suite | `{payload['suite']}` |",
+        f"| Driver | `{payload['driver']}` |",
+        f"| Model | `{payload['model']}` |",
+        f"| Passed | {raw['passed']}/{raw['total']} |",
+        f"| Pass rate | {raw['pass_rate']:.4f} |",
+        f"| 95% CI | {ci_text} |",
+        f"| Total cost USD | {raw['total_cost_usd']:.6f} |",
+        f"| Total wall time s | {raw['total_wall_time_s']:.3f} |",
+        f"| Cost normalized | {cost_norm.get('value', 0.0):.6f} {cost_norm.get('unit', 'n/a')} |",
+        "",
+    ]
+    if payload["driver"] == "mock-contract":
+        lines.extend(["Mock outputs are not benchmark evidence.", ""])
+
+    lines.extend(
+        [
+            "| Task | Language | Passed | Cost USD | Wall s |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for task in payload["tasks"]:
+        lines.append(
+            "| {id} | {language} | {passed} | {cost:.6f} | {wall:.3f} |".format(
+                id=str(task["id"]).replace("|", "\\|"),
+                language=str(task["language"]).replace("|", "\\|"),
+                passed="yes" if task["passed"] else "no",
+                cost=float(task["cost_usd"]),
+                wall=float(task["wall_time_s"]),
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def write_full_reports(output_path: Path, payload: dict[str, Any]) -> None:
+    write_jsonl_report(output_path.with_suffix(".jsonl"), payload)
+    output_path.with_suffix(".md").write_text(render_markdown_report(payload))
+
+
 def run_suite(args: argparse.Namespace) -> int:
     config = load_json(args.config)
     tasks = load_json(args.tasks)
@@ -212,8 +286,14 @@ def run_suite(args: argparse.Namespace) -> int:
             task_results.append(run_aider_task(config, task, args.timeout_s))
 
     payload = build_payload(suite_name, config, task_results, args.mock)
+    if suite_name == "coding-full":
+        payload["reports"] = _report_paths(args.output)
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    if suite_name == "coding-full":
+        write_full_reports(args.output, payload)
+
     raw = payload["raw"]
     print(
         f"{suite_name}: {raw['passed']}/{raw['total']} passed, "

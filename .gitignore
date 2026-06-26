@@ -27,3 +27,5 @@ omnifusion.yaml
 
 # Local eval runs. Promote intentional baselines under evals/coding/baselines/.
 evals/coding/runs/*.json
+evals/coding/runs/*.jsonl
+evals/coding/runs/*.md

@@ -13,6 +13,7 @@ Commands:
 
 - `make eval-coding-smoke` runs the checked-in smoke subset.
 - `make eval-coding-full` runs the larger Tier C subset with confidence interval
-  and cost-normalized summary output.
+  and cost-normalized summary output. Full runs emit JSON, task JSONL, and
+  Markdown report files.
 - `EVAL_MOCK=1 make eval-coding-smoke` exercises the harness contract without
   calling Aider or a provider. Mock outputs are not benchmark evidence.
