@@ -64,4 +64,11 @@ async def _execute_conductor(run_id, preset, body, key_hash):
 
 
 async def execute_strategy(run_id, preset, body, key_hash):
-    return await registry.execute(run_id, preset, body, key_hash)
+    """Public entry point: run the selected strategy and unwrap its StrategyResult
+    envelope into the OpenAI-shaped payload the API layer returns."""
+    from .strategy import StrategyResult
+
+    result = await registry.execute(run_id, preset, body, key_hash)
+    if isinstance(result, StrategyResult):
+        return result.payload
+    return result

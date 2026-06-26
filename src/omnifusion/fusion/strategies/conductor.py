@@ -14,7 +14,7 @@ from omnifusion.fusion.runtime.executor import BudgetedExecutor
 from omnifusion.fusion.runtime.response import ResponseShaper
 from omnifusion.fusion.runtime.streaming import normalize_finish_reason
 from omnifusion.fusion.runtime.context import RunContext
-from omnifusion.fusion.runtime.strategy import FusionStrategy
+from omnifusion.fusion.runtime.strategy import FusionStrategy, StrategyResult
 from omnifusion.fusion.runtime.bandit import select_panel_models
 from omnifusion.fusion.types import (
     FusionTrace,
@@ -30,14 +30,15 @@ from omnifusion.store.runs import save_trace
 class ConductorStrategy(FusionStrategy):
     key = "conductor"
 
-    async def execute(self, ctx: RunContext):
-        return await execute_conductor(
+    async def execute(self, ctx: RunContext) -> StrategyResult:
+        payload = await execute_conductor(
             ctx.run_id,
             ctx.preset,
             ctx.request,
             ctx.key_hash,
             artifacts=ctx.artifacts,
         )
+        return StrategyResult(payload=payload)
 
 
 def _message_dicts(request: ChatCompletionRequest) -> list[dict[str, Any]]:
