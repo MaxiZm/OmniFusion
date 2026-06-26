@@ -1,8 +1,13 @@
 import os
+import uuid
 from jinja2 import Environment, FileSystemLoader
 
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
 jinja_env = Environment(loader=FileSystemLoader(PROMPTS_DIR))
+
+
+def new_prompt_nonce() -> str:
+    return uuid.uuid4().hex
 
 
 def _prefix_role_prompt(rendered: str, prompt_config, role: str) -> str:

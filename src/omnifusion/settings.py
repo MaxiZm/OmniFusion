@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     omnifusion_searxng_base_url: str = "http://localhost:8080"
     omnifusion_tavily_api_key: Optional[SecretStr] = None
     omnifusion_brave_api_key: Optional[SecretStr] = None
+    omnifusion_web_fetch_cache_ttl_seconds: float = 300.0
+    omnifusion_web_fetch_per_domain_interval_seconds: float = 1.0
 
     # DB
     db_path: str = "data/omnifusion.db"

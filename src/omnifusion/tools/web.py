@@ -5,13 +5,14 @@ import html
 import ipaddress
 import re
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Mapping
 
+from omnifusion.fusion.prompts import new_prompt_nonce
 from omnifusion.settings import settings
 
 
@@ -37,6 +38,13 @@ class WebFetchResult:
 
 Transport = Callable[[str, Mapping[str, str]], WebResponse]
 Resolver = Callable[[str], list[str]]
+Clock = Callable[[], float]
+
+
+@dataclass(frozen=True)
+class _CacheEntry:
+    expires_at: float
+    result: WebFetchResult
 
 
 _ALLOWED_SCHEMES = {"http", "https"}
@@ -144,6 +152,17 @@ def _validate_ip_allowed(ip_value: str) -> None:
         raise ValueError(f"web fetch to private or local address {ip_value} is blocked")
 
 
+def _domain_key(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    return (parsed.hostname or "").lower()
+
+
+def _with_cache_hit(result: WebFetchResult, cache_hit: bool) -> WebFetchResult:
+    trace_metadata = dict(result.trace_metadata)
+    trace_metadata["cache_hit"] = cache_hit
+    return replace(result, trace_metadata=trace_metadata)
+
+
 class WebFetcher:
     def __init__(
         self,
@@ -154,6 +173,9 @@ class WebFetcher:
         max_content_bytes: int = 1_000_000,
         excerpt_chars: int = 2_048,
         nonce: str | None = None,
+        cache_ttl_seconds: float | None = None,
+        per_domain_interval_seconds: float | None = None,
+        now: Clock | None = None,
     ) -> None:
         if max_redirects < 0:
             raise ValueError("max_redirects must be >= 0")
@@ -162,22 +184,48 @@ class WebFetcher:
         if excerpt_chars < 1:
             raise ValueError("excerpt_chars must be >= 1")
 
+        cache_ttl = (
+            settings.omnifusion_web_fetch_cache_ttl_seconds
+            if cache_ttl_seconds is None
+            else cache_ttl_seconds
+        )
+        domain_interval = (
+            settings.omnifusion_web_fetch_per_domain_interval_seconds
+            if per_domain_interval_seconds is None
+            else per_domain_interval_seconds
+        )
+        if cache_ttl < 0:
+            raise ValueError("cache_ttl_seconds must be >= 0")
+        if domain_interval < 0:
+            raise ValueError("per_domain_interval_seconds must be >= 0")
+
         self.transport = transport or _default_transport
         self.resolver = resolver or _default_resolver
         self.max_redirects = max_redirects
         self.max_content_bytes = max_content_bytes
         self.excerpt_chars = excerpt_chars
         self.nonce = nonce
+        self.cache_ttl_seconds = cache_ttl
+        self.per_domain_interval_seconds = domain_interval
+        self.now = now or time.monotonic
+        self._cache: dict[str, _CacheEntry] = {}
+        self._last_fetch_by_domain: dict[str, float] = {}
 
     def fetch(self, url: str) -> WebFetchResult:
         initial_url = self._validate_url(url)
+        cached = self._read_cache(initial_url)
+        if cached is not None:
+            return cached
+
         current_url = initial_url
         headers = {
             "accept": ", ".join(sorted(_ALLOWED_MIME_TYPES)),
             "user-agent": "OmniFusion-WebFetch/0.1",
         }
+        domains_checked_this_fetch: set[str] = set()
 
         for _redirect_count in range(self.max_redirects + 1):
+            self._enforce_domain_rate_limit(current_url, domains_checked_this_fetch)
             response = self.transport(current_url, headers)
             response_url = self._validate_url(response.url or current_url)
             normalized_headers = _normalize_headers(response.headers)
@@ -188,12 +236,14 @@ class WebFetcher:
                 )
                 continue
 
-            return self._to_result(
+            result = self._to_result(
                 requested_url=initial_url,
                 final_url=response_url,
                 response=response,
                 headers=normalized_headers,
             )
+            self._write_cache(initial_url, result)
+            return result
 
         raise ValueError("web fetch exceeded redirect limit")
 
@@ -216,6 +266,41 @@ class WebFetcher:
             _validate_ip_allowed(resolved_ip)
         return url
 
+    def _read_cache(self, url: str) -> WebFetchResult | None:
+        if self.cache_ttl_seconds <= 0:
+            return None
+        entry = self._cache.get(url)
+        if entry is None:
+            return None
+        if entry.expires_at <= self.now():
+            self._cache.pop(url, None)
+            return None
+        return _with_cache_hit(entry.result, True)
+
+    def _write_cache(self, url: str, result: WebFetchResult) -> None:
+        if self.cache_ttl_seconds <= 0:
+            return
+        self._cache[url] = _CacheEntry(
+            expires_at=self.now() + self.cache_ttl_seconds,
+            result=result,
+        )
+
+    def _enforce_domain_rate_limit(
+        self, url: str, domains_checked_this_fetch: set[str]
+    ) -> None:
+        if self.per_domain_interval_seconds <= 0:
+            return
+        domain = _domain_key(url)
+        if not domain or domain in domains_checked_this_fetch:
+            return
+        domains_checked_this_fetch.add(domain)
+
+        now = self.now()
+        last_fetch = self._last_fetch_by_domain.get(domain)
+        if last_fetch is not None and now - last_fetch < self.per_domain_interval_seconds:
+            raise ValueError(f"web fetch rate limit for domain '{domain}'")
+        self._last_fetch_by_domain[domain] = now
+
     def _to_result(
         self,
         *,
@@ -234,7 +319,7 @@ class WebFetcher:
         decoded = bounded_body.decode("utf-8", errors="replace")
         cleaned = _clean_html(decoded, mime_type)
         excerpt = _bounded_text(cleaned, self.excerpt_chars)
-        nonce = self.nonce or uuid.uuid4().hex
+        nonce = self.nonce or new_prompt_nonce()
 
         fenced_content = "\n".join(
             [
@@ -255,6 +340,7 @@ class WebFetcher:
             "content_hash": content_hash,
             "excerpt": excerpt,
             "truncated": truncated,
+            "cache_hit": False,
         }
 
         return WebFetchResult(

@@ -37,6 +37,24 @@ Fusion model references such as `openrouter/fusion`, `openrouter:fusion`, and
 `fusion/*` are blocked for internal panel/judge/synthesis model calls to prevent
 recursive fusion.
 
+## Web Tools
+
+`web_fetch` accepts only `http` and `https` URLs. It blocks cloud metadata,
+loopback, private, link-local, multicast, reserved, and unspecified egress unless
+private egress is explicitly enabled; cloud metadata remains blocked. Redirect
+targets are revalidated on every hop.
+
+Fetched content is treated as untrusted source data. It is byte-capped,
+MIME-allowlisted, stripped of active HTML markup, and fenced in nonce-delimited
+blocks before it can be included in prompts. By default traces store URL,
+metadata, content hash, a bounded excerpt, cache-hit status, and truncation
+status, not the full fetched page. `web_fetch` also applies an instance-level TTL
+cache and per-domain fetch interval to reduce repeated origin hits.
+
+OmniFusion does not bypass site access controls, robots policies, or terms of
+service. Operators are responsible for configuring `web_fetch` and `web_search`
+only for sources they are permitted to access.
+
 ## Responses
 
 `/v1/responses` and `/api/v1/responses` implement a minimal text-compatible
