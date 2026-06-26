@@ -140,7 +140,7 @@ async def test_streaming_synthesis_reconciles_once(isolated_db, monkeypatch):
     assert reserved_after_close == 0
     assert spent_after_close > spent_before_close
     assert await _reservation_states(close_run_id, "final") == ["reconciled"]
-    assert close_context["cost_usd"] > 0
+    assert unconsumed_stream.cost_usd > 0
 
     run_id = "step0-stream-ledger"
     context = {}
@@ -159,7 +159,7 @@ async def test_streaming_synthesis_reconciles_once(isolated_db, monkeypatch):
     assert reserved_after == 0
     assert spent_after > spent_before
     assert await _reservation_states(run_id, "final") == ["reconciled"]
-    assert context["cost_usd"] > 0
+    assert stream.cost_usd > 0
 
     spent_once = spent_after
     await stream.aclose()

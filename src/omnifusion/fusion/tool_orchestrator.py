@@ -49,6 +49,17 @@ from ..store.runs import save_trace
 logger = logging.getLogger("omnifusion.tool_orchestrator")
 
 
+def _final_result_cost(final_result) -> float:
+    return float(
+        getattr(
+            final_result,
+            "_omnifusion_cost_usd",
+            getattr(final_result, "cost_usd", 0.0),
+        )
+        or 0.0
+    )
+
+
 def _disable_thinking_kwargs(model: str) -> dict:
     """DeepSeek V4 defaults to *thinking* mode, which returns reasoning_content that
     must be passed back on every subsequent turn of a multi-turn tool conversation.
@@ -438,9 +449,8 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         update={"messages": sanitized, "tools": None, "tool_choice": None}
     )
 
-    context = {}
     final_result = await run_synthesis(
-        run_id, preset, synth_body, panel_results, judge_analysis, context
+        run_id, preset, synth_body, panel_results, judge_analysis, {}
     )
 
     judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
@@ -480,7 +490,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                 err = exc
                 logger.error(f"tool-fusion final stream error {run_id}: {exc}", exc_info=True)
             finally:
-                synth_cost = context.get("cost_usd", 0.0)
+                synth_cost = _final_result_cost(final_result)
                 trace = FusionTrace(
                     run_id=run_id, preset=preset.name,
                     cost_usd=panel_cost + judge_cost + synth_cost,
@@ -496,7 +506,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         return StreamingResponse(gen(), media_type="text/event-stream")
 
     content = final_result.choices[0].message.content
-    synth_cost = context.get("cost_usd", 0.0)
+    synth_cost = _final_result_cost(final_result)
     trace = FusionTrace(
         run_id=run_id, preset=preset.name,
         cost_usd=panel_cost + judge_cost + synth_cost,

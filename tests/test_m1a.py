@@ -296,7 +296,7 @@ async def test_streaming_cost_replay_reconciles_nonzero_final_stage(tmp_path, mo
         assert reserved == 0
         assert spent > 0
         assert reservation_state == "reconciled"
-        assert context["cost_usd"] > 0
+        assert stream.cost_usd > 0
     finally:
         PRICE_OVERRIDES.pop(model, None)
         settings.db_path = old_db

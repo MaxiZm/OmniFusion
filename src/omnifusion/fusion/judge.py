@@ -1,11 +1,8 @@
 import json
 import re
-import asyncio
 from typing import List, Optional
 from .types import Preset, PanelResult, JudgeAnalysis
-from ..llm.client import llm_client
-from ..budget.ledger import reserve_budget, reconcile_budget
-from ..providers.pricing import calculate_actual_cost, estimate_call_cost, usd_to_micro
+from .runtime.executor import BudgetedExecutor
 from .prompts import render_judge_prompt
 
 
@@ -188,106 +185,78 @@ async def run_judge(
 
     prompt = render_judge_prompt(user_prompt, panel_answers, run_id)
 
-    # 1. Dynamic budget reservation (judge stage)
     judge_messages = [{"role": "user", "content": prompt}]
-    cost_usd = estimate_call_cost(
-        preset.judge_model, judge_messages, preset.judge.max_tokens
-    )
-    reserve_micro_usd = max(1, int(cost_usd * 1_000_000))
-
-    reservation_id = await reserve_budget(run_id, "judge", reserve_micro_usd)
 
     analysis = None
     actual_cost_usd = 0.0
-    reconciled = False
+    executor = BudgetedExecutor(run_id)
     try:
+        # Request OpenAI-style JSON mode by default — it is the single biggest
+        # reduction in judge parse failures and is broadly supported (DeepSeek
+        # V4, OpenAI, Groq, OpenRouter, Ollama, LM Studio). llm/client.filter_params()
+        # drops response_format for providers that don't support it (anthropic,
+        # gemini), and the explicit retry below covers any model that rejects it.
+        kwargs = {
+            "timeout": preset.judge.timeout,
+            "response_format": {"type": "json_object"},
+        }
+
         try:
-            # Request OpenAI-style JSON mode by default — it is the single biggest
-            # reduction in judge parse failures and is broadly supported (DeepSeek
-            # V4, OpenAI, Groq, OpenRouter, Ollama, LM Studio). llm/client.filter_params()
-            # drops response_format for providers that don't support it (anthropic,
-            # gemini), and the explicit retry below covers any model that rejects it.
-            kwargs = {
-                "timeout": preset.judge.timeout,
-                "max_tokens": preset.judge.max_tokens,
-                "response_format": {"type": "json_object"},
-            }
+            response = await executor.call(
+                "judge",
+                provider_id="default",
+                model=preset.judge_model,
+                messages=judge_messages,
+                max_tokens=preset.judge.max_tokens,
+                **kwargs,
+            )
+        except Exception:
+            kwargs.pop("response_format", None)
+            response = await executor.call(
+                "judge",
+                provider_id="default",
+                model=preset.judge_model,
+                messages=judge_messages,
+                max_tokens=preset.judge.max_tokens,
+                **kwargs,
+            )
 
-            try:
-                response = await llm_client.acompletion(
-                    provider_id="default",
-                    model=preset.judge_model,
-                    messages=judge_messages,
-                    **kwargs,
-                )
-            except Exception:
-                # Some models/endpoints reject JSON mode. Fall back to a plain call
-                # (robust extraction below handles unstructured output) rather than
-                # failing the whole judge stage.
-                if "response_format" in kwargs:
-                    kwargs.pop("response_format", None)
-                    response = await llm_client.acompletion(
-                        provider_id="default",
-                        model=preset.judge_model,
-                        messages=judge_messages,
-                        **kwargs,
-                    )
-                else:
-                    raise
+        content = response.choices[0].message.content
+        actual_cost_usd = getattr(response, "_omnifusion_cost_usd", 0.0)
 
-            content = response.choices[0].message.content
-            actual_cost_usd = calculate_actual_cost(response, preset.judge_model)
+        # Capture judge token usage so it can be aggregated into the response.
+        judge_usage = getattr(response, "usage", None)
+        judge_prompt_tokens = int(getattr(judge_usage, "prompt_tokens", 0) or 0)
+        judge_completion_tokens = int(getattr(judge_usage, "completion_tokens", 0) or 0)
 
-            # Capture judge token usage so it can be aggregated into the response.
-            judge_usage = getattr(response, "usage", None)
-            judge_prompt_tokens = int(getattr(judge_usage, "prompt_tokens", 0) or 0)
-            judge_completion_tokens = int(getattr(judge_usage, "completion_tokens", 0) or 0)
-
-            try:
-                data = extract_json_from_text(content)
-                analysis = JudgeAnalysis(
-                    consensus=data.get("consensus", ""),
-                    disagreements=data.get("disagreements", ""),
-                    strongest_points_by_model=data.get("strongest_points_by_model", {}),
-                    missing_information=data.get("missing_information", ""),
-                    likely_errors=data.get("likely_errors", ""),
-                    recommended_final_answer_plan=data.get(
-                        "recommended_final_answer_plan", ""
-                    ),
-                    cost_usd=actual_cost_usd,
-                    prompt_tokens=judge_prompt_tokens,
-                    completion_tokens=judge_completion_tokens,
-                )
-            except Exception:
-                analysis = JudgeAnalysis(
-                    consensus="Degraded analysis due to parse failure.",
-                    recommended_final_answer_plan="Synthesize the best available information.",
-                    cost_usd=actual_cost_usd,
-                    prompt_tokens=judge_prompt_tokens,
-                    completion_tokens=judge_completion_tokens,
-                )
-
-            async def run_cleanup():
-                actual_micro_usd = usd_to_micro(actual_cost_usd)
-                await reconcile_budget(reservation_id, actual_micro_usd)
-
-            await asyncio.shield(run_cleanup())
-            reconciled = True
-            return analysis
-
+        try:
+            data = extract_json_from_text(content)
+            analysis = JudgeAnalysis(
+                consensus=data.get("consensus", ""),
+                disagreements=data.get("disagreements", ""),
+                strongest_points_by_model=data.get("strongest_points_by_model", {}),
+                missing_information=data.get("missing_information", ""),
+                likely_errors=data.get("likely_errors", ""),
+                recommended_final_answer_plan=data.get(
+                    "recommended_final_answer_plan", ""
+                ),
+                cost_usd=actual_cost_usd,
+                prompt_tokens=judge_prompt_tokens,
+                completion_tokens=judge_completion_tokens,
+            )
         except Exception:
             analysis = JudgeAnalysis(
-                consensus="Judge failed to execute.",
+                consensus="Degraded analysis due to parse failure.",
                 recommended_final_answer_plan="Synthesize the best available information.",
-                cost_usd=0.0,
+                cost_usd=actual_cost_usd,
+                prompt_tokens=judge_prompt_tokens,
+                completion_tokens=judge_completion_tokens,
             )
-            async def run_cleanup():
-                await reconcile_budget(reservation_id, 0)
-            await asyncio.shield(run_cleanup())
-            reconciled = True
-            return analysis
-    finally:
-        if not reconciled:
-            async def run_cleanup():
-                await reconcile_budget(reservation_id, 0)
-            await asyncio.shield(run_cleanup())
+        return analysis
+
+    except Exception:
+        return JudgeAnalysis(
+            consensus="Judge failed to execute.",
+            recommended_final_answer_plan="Synthesize the best available information.",
+            cost_usd=0.0,
+        )

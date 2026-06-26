@@ -55,6 +55,17 @@ def _compute_usage(preset, panel_results, judge_analysis, final_result) -> dict:
     }
 
 
+def _final_result_cost(final_result) -> float:
+    return float(
+        getattr(
+            final_result,
+            "_omnifusion_cost_usd",
+            getattr(final_result, "cost_usd", 0.0),
+        )
+        or 0.0
+    )
+
+
 async def run_fusion(
     run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
 ):
@@ -99,10 +110,9 @@ async def run_fusion(
             degraded = True
 
         # 4. Synthesis
-        context = {}
         try:
             final_result = await run_synthesis(
-                run_id, preset, request, panel_results, judge_analysis, context
+                run_id, preset, request, panel_results, judge_analysis, {}
             )
         except Exception as e:
             on_fail = getattr(preset, "on_final_failure", "error")
@@ -219,7 +229,7 @@ async def run_fusion(
                     wall_ms = int((time.time() - start_time) * 1000)
                     panel_cost = sum(r.cost_usd for r in panel_results)
                     judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
-                    synth_cost = context.get("cost_usd", 0.0)
+                    synth_cost = _final_result_cost(final_result)
                     total_cost = panel_cost + judge_cost + synth_cost
                     trace = FusionTrace(
                         run_id=run_id,
@@ -244,7 +254,7 @@ async def run_fusion(
             content = final_result.choices[0].message.content
             panel_cost = sum(r.cost_usd for r in panel_results)
             judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
-            synth_cost = context.get("cost_usd", 0.0)
+            synth_cost = _final_result_cost(final_result)
             total_cost = panel_cost + judge_cost + synth_cost
 
             wall_ms = int((time.time() - start_time) * 1000)
