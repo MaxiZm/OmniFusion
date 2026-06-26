@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     omnifusion_brave_api_key: Optional[SecretStr] = None
     omnifusion_web_fetch_cache_ttl_seconds: float = 300.0
     omnifusion_web_fetch_per_domain_interval_seconds: float = 1.0
+    omnifusion_conductor_max_repairs: int = 1
 
     # DB
     db_path: str = "data/omnifusion.db"

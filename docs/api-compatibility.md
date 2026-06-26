@@ -55,6 +55,14 @@ OmniFusion does not bypass site access controls, robots policies, or terms of
 service. Operators are responsible for configuring `web_fetch` and `web_search`
 only for sources they are permitted to access.
 
+## Experimental Conductor
+
+Preset `strategy: "conductor"` enables an explicit, off-default transparent
+approximation path with budgeted `plan`, `worker/<model>`, `verify`,
+`repair/<n>`, and `merge` stages. It is marked in trace metadata as
+experimental and `ablation_required`; it is not enabled by the `fugu` or
+`fugu-ultra` aliases and does not imply benchmark advantage.
+
 ## Responses
 
 `/v1/responses` and `/api/v1/responses` implement a minimal text-compatible

@@ -63,7 +63,7 @@ class PresetV2(BaseModel):
     models: List[PresetModel] = Field(default_factory=list)
     prompts: PresetPrompts = Field(default_factory=PresetPrompts)
     budgets: Optional[PresetBudgets] = None
-    strategy: Literal["B"] = "B"
+    strategy: Literal["B", "conductor"] = "B"
     panel_models: List[str] = Field(default_factory=list)
     panel: Optional[PresetStage] = None
     judge_model: str = ""
