@@ -15,6 +15,10 @@ def test_launch_readiness_docs_and_ci_are_present():
         ".github/workflows/ci.yml",
         "CONTRIBUTING.md",
         "SECURITY.md",
+        "docs/benchmark-reproduction.md",
+        "docs/budgeting-tracing.md",
+        "docs/fugu-architecture.md",
+        "docs/providers-presets.md",
         "docs/security-model.md",
         "docs/quickstart.md",
     ]
@@ -35,3 +39,13 @@ def test_launch_readiness_docs_and_ci_are_present():
     assert "web_fetch" in security
     assert "OMNIFUSION_ALLOW_PRIVATE_EGRESS" in security
     assert "No benchmark advantage claim" in security
+
+    benchmark = Path("docs/benchmark-reproduction.md").read_text()
+    assert "Tier C" in benchmark
+    assert "best single configured model" in benchmark
+    assert "judge-selected best-of-N" in benchmark
+
+    fugu = Path("docs/fugu-architecture.md").read_text()
+    assert "transparent approximation" in fugu
+    assert "ablation_required" in fugu
+    assert "off by default" in fugu

@@ -31,3 +31,12 @@ curl http://127.0.0.1:8000/v1/models \
 Use `fusion/<preset>`, `openrouter/fusion`, `fugu`, or `fugu-ultra` as model IDs.
 The `fugu` aliases are transparent compatibility placeholders unless explicitly
 reconfigured.
+
+## More Operator Docs
+
+- [Providers, presets, and role prompts](providers-presets.md)
+- [API compatibility](api-compatibility.md)
+- [Budgeting and tracing](budgeting-tracing.md)
+- [Fugu-compatible architecture](fugu-architecture.md)
+- [Benchmark reproduction](benchmark-reproduction.md)
+- [Security model](security-model.md)
