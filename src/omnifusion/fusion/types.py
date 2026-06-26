@@ -41,6 +41,7 @@ class Preset(BaseModel):
     cost_ceiling: Optional[float] = None
     on_final_failure: Literal["error", "best_panel"] = "error"
     min_panel_success: int = 1
+    compat_status: Optional[str] = None
 
     @field_validator("name", "judge_model", "final_model")
     @classmethod
@@ -116,3 +117,10 @@ class FusionTrace(BaseModel):
     panel_results: List[PanelResult]
     judge_analysis: Optional[JudgeAnalysis] = None
     final_answer: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+def trace_metadata_for_preset(preset: Preset) -> Dict[str, Any]:
+    if preset.compat_status:
+        return {"model_status": preset.compat_status}
+    return {}

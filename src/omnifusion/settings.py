@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     panel_timeout: int = 30
     max_panel: int = 8
     min_panel_success: int = 1
+    omnifusion_default_fusion_preset: str = "general"
+    omnifusion_compat_placeholder_model: str = "compat-placeholder-model"
 
     # DB
     db_path: str = "data/omnifusion.db"

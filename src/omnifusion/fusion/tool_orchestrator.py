@@ -30,7 +30,7 @@ from typing import Optional
 
 from fastapi.responses import StreamingResponse
 
-from .types import Preset, PanelResult, JudgeAnalysis
+from .types import Preset, PanelResult, JudgeAnalysis, trace_metadata_for_preset
 from ..llm.client import llm_client
 from ..budget.ledger import (
     initialize_request_budget,
@@ -367,6 +367,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                 consensus=f"Selected tool call from {chosen['model']}",
             ),
             final_answer=None,
+            metadata=trace_metadata_for_preset(preset),
         )
         await save_trace(trace, body.store, key_hash)
 
@@ -486,6 +487,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                     wall_ms=int((time.time() - start_time) * 1000),
                     degraded=err is not None, panel_results=panel_results,
                     judge_analysis=judge_analysis, final_answer=completion_text,
+                    metadata=trace_metadata_for_preset(preset),
                 )
                 await save_trace(trace, body.store, key_hash)
             if err is not None:
@@ -501,6 +503,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         wall_ms=int((time.time() - start_time) * 1000),
         degraded=False, panel_results=panel_results,
         judge_analysis=judge_analysis, final_answer=content,
+        metadata=trace_metadata_for_preset(preset),
     )
     await save_trace(trace, body.store, key_hash)
     # Aggregate usage across panel + judge + final synthesis (no longer hardcoded 0).

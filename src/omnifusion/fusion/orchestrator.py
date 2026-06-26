@@ -3,7 +3,7 @@ import json
 import uuid
 import logging
 from fastapi.responses import StreamingResponse
-from .types import Preset, FusionTrace
+from .types import Preset, FusionTrace, trace_metadata_for_preset
 from .panel import run_panel
 from .judge import run_judge
 from .synth import run_synthesis
@@ -150,6 +150,7 @@ async def run_fusion(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=best_panel.content,
+                        metadata=trace_metadata_for_preset(preset),
                     )
                     await save_trace(trace, request.store, key_hash)
                     return final_response_dict
@@ -229,6 +230,7 @@ async def run_fusion(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=completion_text,
+                        metadata=trace_metadata_for_preset(preset),
                     )
                     await save_trace(trace, request.store, key_hash)
 
@@ -256,6 +258,7 @@ async def run_fusion(
                 panel_results=panel_results,
                 judge_analysis=judge_analysis,
                 final_answer=content,
+                metadata=trace_metadata_for_preset(preset),
             )
             await save_trace(trace, request.store, key_hash)
 
@@ -292,6 +295,7 @@ async def run_fusion(
             panel_results=panel_results,
             judge_analysis=judge_analysis,
             final_answer=None,
+            metadata=trace_metadata_for_preset(preset),
         )
         await save_trace(trace, request.store, key_hash)
         raise outer_err
