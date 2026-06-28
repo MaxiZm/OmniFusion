@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro yesno(v) %}
+<span class="badge {{ 'bg-success' if v else 'bg-neutral no-dot' }}">{{ 'Yes' if v else 'No' }}</span>
+{% endmacro %}
+
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Instrument 06</span>
+        <h1>Diagnostics</h1>
+    </div>
+    <p class="page-subtitle">Read-only startup readiness and deployment health. No secrets are shown — counts, flags, and identifiers only.</p>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Overall readiness</h2>
+            <div class="subtitle">{{ diag.warnings|length }} advisory warning{{ '' if diag.warnings|length == 1 else 's' }}</div>
+        </div>
+        <span class="badge {% if diag.status == 'ok' %}bg-success{% elif diag.status == 'warn' %}bg-warning{% else %}bg-danger{% endif %}">
+            {{ diag.status|upper }}
+        </span>
+    </div>
+    {% if diag.warnings %}
+    <div class="card-body">
+        <ul class="diag-warnings">
+            {% for w in diag.warnings %}
+            <li>{{ w }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-head"><div><h2>Subsystems</h2><div class="subtitle">startup · database · auth · default preset</div></div></div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table>
+                <tbody>
+                    <tr><td class="cell-primary">Startup security</td><td class="num">{{ yesno(diag.startup.ok) }}</td></tr>
+                    <tr><td class="cell-primary">Database</td><td class="num"><span class="badge {{ 'bg-success' if diag.database.status == 'ok' else 'bg-danger' }}">{{ diag.database.status }}</span></td></tr>
+                    <tr><td class="cell-primary">SQLite WAL mode</td><td class="num">{{ yesno(diag.database.wal) }} <span class="cell-muted">{{ diag.database.journal_mode }}</span></td></tr>
+                    <tr><td class="cell-primary">Configured API keys</td><td class="num cell-mono">{{ diag.auth.api_key_count }}</td></tr>
+                    <tr><td class="cell-primary">Secret key configured</td><td class="num">{{ yesno(diag.auth.secret_key_configured) }}</td></tr>
+                    <tr><td class="cell-primary">Admin password configured</td><td class="num">{{ yesno(diag.auth.admin_password_configured) }}</td></tr>
+                    <tr><td class="cell-primary">Secure cookie</td><td class="num">{{ yesno(diag.auth.secure_cookie) }}</td></tr>
+                    <tr><td class="cell-primary">Default preset <span class="cell-muted">fusion/{{ diag.default_preset.name }}</span></td><td class="num">{{ yesno(diag.default_preset.exists) }}</td></tr>
+                    <tr><td class="cell-primary">Web search <span class="cell-muted">{{ diag.web_search.provider }}</span></td><td class="num">{{ yesno(diag.web_search.configured) }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><div><h2>Providers</h2><div class="subtitle">{{ diag.providers.count }} configured</div></div></div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>Type</th><th>Key</th><th>Env ref</th><th class="num">Models</th></tr></thead>
+                <tbody>
+                    {% for p in diag.providers.entries %}
+                    <tr>
+                        <td class="cell-mono cell-primary">{{ p.id }}</td>
+                        <td class="cell-muted">{{ p.type }}</td>
+                        <td>{{ yesno(p.has_encrypted_key) }}</td>
+                        <td class="cell-muted">{{ p.api_key_ref or '—' }}</td>
+                        <td class="num cell-mono">{{ p.model_count }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="empty-cell"><div class="empty"><span class="empty-title">No providers configured</span></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="actions" style="display:flex;gap:12px;margin-top:18px;">
+    <a href="/admin/diagnostics.json" class="btn btn-secondary" target="_blank" rel="noopener">View JSON</a>
+    <a href="/admin/budget" class="btn btn-secondary">Budget ledger</a>
+</div>
+
+<style>
+    .diag-warnings { margin: 0; padding-left: 1.1rem; }
+    .diag-warnings li { color: var(--warn); font-size: var(--t-small); line-height: 1.6; }
+</style>
+{% endblock %}

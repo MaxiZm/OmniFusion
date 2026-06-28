@@ -8,6 +8,7 @@ from .api.traces import router as traces_router
 from .api.models import router as models_router
 from .api.responses import router as responses_router
 from .api.presets import router as presets_router
+from .api.providers import router as providers_router
 from .admin.routes import router as admin_router
 from .api.errors import (
     OmniFusionError,
@@ -207,11 +208,13 @@ app.include_router(traces_router, prefix="/v1")
 app.include_router(models_router, prefix="/v1")
 app.include_router(responses_router, prefix="/v1")
 app.include_router(presets_router, prefix="/v1")
+app.include_router(providers_router, prefix="/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(traces_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
 app.include_router(responses_router, prefix="/api/v1")
 app.include_router(presets_router, prefix="/api/v1")
+app.include_router(providers_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/admin")
 
 

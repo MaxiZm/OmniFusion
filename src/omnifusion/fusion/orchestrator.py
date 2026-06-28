@@ -1,7 +1,7 @@
 import time
 import logging
 from fastapi.responses import StreamingResponse
-from .types import Preset, FusionTrace, trace_metadata_for_preset
+from .types import Preset, FusionTrace, trace_metadata_for_preset, build_stage_events
 from .panel import run_panel
 from .judge import run_judge
 from .synth import run_synthesis
@@ -148,6 +148,15 @@ async def run_fusion_classic(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=best_panel.content,
+                        stage_events=build_stage_events(
+                            preset,
+                            panel_results,
+                            judge_analysis,
+                            best_panel.content,
+                            synth_cost=0.0,
+                            web_sources=web_sources,
+                            degraded=True,
+                        ),
                         metadata=_trace_metadata(preset, web_sources),
                     )
                     await save_trace(trace, request.store, key_hash)
@@ -214,15 +223,26 @@ async def run_fusion_classic(
                     judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
                     synth_cost = _final_result_cost(final_result)
                     total_cost = panel_cost + judge_cost + synth_cost
+                    _stream_degraded = degraded or stream_error is not None
                     trace = FusionTrace(
                         run_id=run_id,
                         preset=preset.name,
                         cost_usd=total_cost,
                         wall_ms=wall_ms,
-                        degraded=degraded or stream_error is not None,
+                        degraded=_stream_degraded,
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=completion_text,
+                        stage_events=build_stage_events(
+                            preset,
+                            panel_results,
+                            judge_analysis,
+                            completion_text if stream_error is None else None,
+                            synth_cost=synth_cost,
+                            synth_usage=synth_usage,
+                            web_sources=web_sources,
+                            degraded=_stream_degraded,
+                        ),
                         metadata=_trace_metadata(preset, web_sources),
                     )
                     await save_trace(trace, request.store, key_hash)
@@ -251,6 +271,16 @@ async def run_fusion_classic(
                 panel_results=panel_results,
                 judge_analysis=judge_analysis,
                 final_answer=content,
+                stage_events=build_stage_events(
+                    preset,
+                    panel_results,
+                    judge_analysis,
+                    content,
+                    synth_cost=synth_cost,
+                    synth_usage=getattr(final_result, "usage", None),
+                    web_sources=web_sources,
+                    degraded=degraded,
+                ),
                 metadata=_trace_metadata(preset, web_sources),
             )
             await save_trace(trace, request.store, key_hash)
@@ -284,6 +314,15 @@ async def run_fusion_classic(
             panel_results=panel_results,
             judge_analysis=judge_analysis,
             final_answer=None,
+            stage_events=build_stage_events(
+                preset,
+                panel_results,
+                judge_analysis,
+                None,
+                synth_cost=0.0,
+                web_sources=web_sources,
+                degraded=True,
+            ),
             metadata=_trace_metadata(preset, web_sources),
         )
         await save_trace(trace, request.store, key_hash)

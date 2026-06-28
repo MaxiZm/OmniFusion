@@ -1,0 +1,67 @@
+{# HTMX fragment swapped into the run-history table. Renders a stage timeline from
+   the additive stage_events, with a raw-JSON toggle. Older runs without
+   stage_events fall back to JSON-only. #}
+<div class="trace-detail">
+    <div class="trace-summary">
+        <span>run <b class="cell-mono">{{ trace.run_id }}</b></span>
+        <span class="sep">·</span>
+        <span>cost <b class="cell-cost">${{ '%.5f'|format(trace.cost_usd) }}</b></span>
+        <span class="sep">·</span>
+        <span>{{ trace.wall_ms }} ms</span>
+        <span class="sep">·</span>
+        <span>
+            <span class="badge {{ 'bg-warning' if trace.degraded else 'bg-success' }}">
+                {{ 'degraded' if trace.degraded else 'clean' }}
+            </span>
+        </span>
+    </div>
+
+    {% if stage_events %}
+    <ol class="stage-timeline">
+        {% for ev in stage_events %}
+        <li class="stage-event status-{{ ev.status }}">
+            <span class="stage-marker"></span>
+            <div class="stage-main">
+                <span class="stage-name">{{ ev.stage }}{% if ev.role and ev.role != ev.stage %} · {{ ev.role }}{% endif %}</span>
+                {% if ev.model %}<span class="stage-model cell-mono">{{ ev.model }}</span>{% endif %}
+                {% if ev.provider_id %}<span class="stage-provider cell-muted">@{{ ev.provider_id }}</span>{% endif %}
+            </div>
+            <div class="stage-meta">
+                <span class="badge {% if ev.status == 'ok' %}bg-success{% elif ev.status in ('error', 'timeout', 'rate_limited') %}bg-danger{% else %}bg-warning{% endif %}">{{ ev.status }}</span>
+                {% if ev.tokens %}<span class="cell-mono cell-muted">{{ ev.tokens.prompt }}+{{ ev.tokens.completion }} tok</span>{% endif %}
+                <span class="cell-cost">${{ '%.5f'|format(ev.cost_usd) }}</span>
+                {% if ev.wall_ms is not none %}<span class="cell-faint">{{ ev.wall_ms }} ms</span>{% endif %}
+                {% if ev.error_code %}<span class="cell-faint">{{ ev.error_code }}</span>{% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <p class="cell-muted" style="margin: 8px 0;">No stage timeline recorded for this run (stored before per-stage events existed).</p>
+    {% endif %}
+
+    <details class="trace-json">
+        <summary>Raw JSON</summary>
+        <pre class="trace-pre"><code>{{ trace_json }}</code></pre>
+    </details>
+</div>
+
+<style>
+    .trace-detail { padding: 14px 16px; }
+    .trace-summary { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-family: var(--mono); font-size: var(--t-small); color: var(--ink-2); margin-bottom: 14px; }
+    .trace-summary .sep { color: var(--ink-4); }
+    .stage-timeline { list-style: none; margin: 0 0 14px; padding: 0; border-left: 1px solid var(--rule-strong); }
+    .stage-event { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 0 8px 18px; position: relative; }
+    .stage-marker { position: absolute; left: -5px; top: 14px; width: 9px; height: 9px; border-radius: 50%; background: var(--ink-4); border: 1px solid var(--bg); }
+    .stage-event.status-ok .stage-marker { background: var(--ok, #9bb38a); }
+    .stage-event.status-error .stage-marker, .stage-event.status-timeout .stage-marker, .stage-event.status-rate_limited .stage-marker { background: var(--danger, #d66); }
+    .stage-event.status-degraded .stage-marker, .stage-event.status-skipped .stage-marker { background: var(--warn, #d6a44f); }
+    .stage-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; flex: 1; min-width: 180px; }
+    .stage-name { font-family: var(--mono); font-size: var(--t-small); color: var(--ink); letter-spacing: 0.02em; }
+    .stage-model { font-size: var(--t-micro); }
+    .stage-provider { font-size: var(--t-micro); }
+    .stage-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--mono); font-size: var(--t-micro); }
+    .trace-json summary { cursor: pointer; font-family: var(--mono); font-size: var(--t-small); color: var(--ink-3); }
+    .trace-json summary:hover { color: var(--accent); }
+    .trace-pre { margin: 10px 0 0; padding: 14px; background: var(--bg); border: 1px solid var(--rule); border-radius: var(--r-sm); overflow-x: auto; font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-2); max-height: 420px; }
+</style>

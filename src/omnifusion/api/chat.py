@@ -16,7 +16,7 @@ import asyncio
 import logging
 from ..budget.ledger import initialize_request_budget, reserve_budget, reconcile_budget
 from ..store.runs import save_trace
-from ..fusion.types import FusionTrace
+from ..fusion.types import FusionTrace, StageEvent
 from .sse import wants_usage
 from ..fusion.runtime.streaming import StreamingAdapter
 from ..logging_config import set_run_id
@@ -195,6 +195,21 @@ async def _single_model_completion(
                             panel_results=[],
                             judge_analysis=None,
                             final_answer=completion_text,
+                            stage_events=[
+                                StageEvent(
+                                    stage="completion",
+                                    role="final",
+                                    provider_id="default",
+                                    model=model,
+                                    status="ok",
+                                    tokens={
+                                        "prompt": pt,
+                                        "completion": ct,
+                                    },
+                                    cost_usd=actual,
+                                    wall_ms=wall_ms,
+                                )
+                            ],
                         )
                         await save_trace(trace, body.store, key_hash)
                     await asyncio.shield(_cleanup())
@@ -215,6 +230,7 @@ async def _single_model_completion(
                     if response_obj.choices
                     else None
                 )
+                _usage = getattr(response_obj, "usage", None)
                 trace = FusionTrace(
                     run_id=run_id,
                     preset=label,
@@ -224,6 +240,25 @@ async def _single_model_completion(
                     panel_results=[],
                     judge_analysis=None,
                     final_answer=content,
+                    stage_events=[
+                        StageEvent(
+                            stage="completion",
+                            role="final",
+                            provider_id="default",
+                            model=model,
+                            status="ok",
+                            tokens={
+                                "prompt": int(getattr(_usage, "prompt_tokens", 0) or 0),
+                                "completion": int(
+                                    getattr(_usage, "completion_tokens", 0) or 0
+                                ),
+                            }
+                            if _usage is not None
+                            else None,
+                            cost_usd=actual,
+                            wall_ms=wall_ms,
+                        )
+                    ],
                 )
                 await save_trace(trace, body.store, key_hash)
             await asyncio.shield(_cleanup())
@@ -243,6 +278,17 @@ async def _single_model_completion(
                     panel_results=[],
                     judge_analysis=None,
                     final_answer=None,
+                    stage_events=[
+                        StageEvent(
+                            stage="completion",
+                            role="final",
+                            provider_id="default",
+                            model=model,
+                            status="error",
+                            cost_usd=0.0,
+                            wall_ms=wall_ms,
+                        )
+                    ],
                 )
                 await save_trace(trace, body.store, key_hash)
             await asyncio.shield(_cleanup())

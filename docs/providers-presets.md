@@ -19,6 +19,23 @@ Provider API keys are encrypted with `OMNIFUSION_SECRET_KEY` before storage.
 Exports contain decrypted keys and are written with restrictive file permissions;
 treat export files as secrets and delete them after import.
 
+### Provider management API
+
+Providers can also be managed over the bearer-authenticated API, mounted under
+both `/v1` and `/api/v1`:
+
+- `GET /providers` — list providers (redacted).
+- `GET /providers/{id}` — one provider (redacted).
+- `PUT /providers/{id}` — create or update. `api_key` is **write-only**; omitting
+  it preserves the existing stored key, while supplying `api_key_ref` switches the
+  provider to environment-variable mode (the stored key is cleared).
+- `DELETE /providers/{id}` — remove a provider.
+- `POST /providers/{id}/test` — issue a single bounded ping completion.
+
+Reads never include plaintext or stored ciphertext — only `id`, `type`,
+`base_url`, `api_key_ref`, `has_encrypted_key`, and `models`. The admin console
+exposes the same operations with a CSRF-protected form.
+
 ## Presets
 
 PresetV2 stores the model pool, role prompts, strategy, and stage budgets. The
