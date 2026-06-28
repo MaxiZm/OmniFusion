@@ -1,6 +1,27 @@
 # Quickstart
 
-## Local Development
+## One Command
+
+```bash
+make quickstart
+```
+
+This installs dependencies and runs `omnifusion quickstart --serve`, which
+creates `.env` (from `.env.example`), generates any missing secrets
+(`OMNIFUSION_SECRET_KEY`, `OMNIFUSION_ADMIN_PASSWORD`, and an
+`OMNIFUSION_API_KEYS` client key), initializes the SQLite database, prints the
+generated admin password and client key, then boots the dev server on
+`http://127.0.0.1:8000`.
+
+It is idempotent — re-running never overwrites secrets you have already set, only
+placeholder values. Provision without serving by dropping `--serve`:
+
+```bash
+uv run omnifusion quickstart          # provision .env + DB, print next steps
+uv run omnifusion quickstart --serve  # ...and start the dev server
+```
+
+## Manual Local Development
 
 ```bash
 uv sync --group dev

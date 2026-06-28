@@ -1,10 +1,17 @@
-.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-tool-smoke eval-ablation-validate verify-claims compat-openai-python compat-openai-node compat-aider compat-opencode compat-cursor
+.PHONY: quickstart dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-tool-smoke eval-ablation-validate verify-claims compat-openai-python compat-openai-node compat-aider compat-opencode compat-cursor
 
 EVAL_CODING_FLAGS :=
 ifeq ($(EVAL_MOCK),1)
 EVAL_CODING_FLAGS += --mock
 endif
 ABLATION_ARTIFACT :=
+
+# One command from a fresh checkout to a running server: install deps, provision
+# .env secrets (generating any that are still placeholders), init the DB, then
+# boot the dev server. Re-running is safe — real secrets are never overwritten.
+quickstart:
+	uv sync --group dev
+	uv run omnifusion quickstart --serve
 
 dev:
 	uv run uvicorn src.omnifusion.main:app --reload

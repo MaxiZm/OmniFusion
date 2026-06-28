@@ -7,6 +7,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`omnifusion quickstart` + `make quickstart`** — one command from a fresh
+  checkout to a running server. Creates `.env` from `.env.example`, generates any
+  missing secrets (`OMNIFUSION_SECRET_KEY`, `OMNIFUSION_ADMIN_PASSWORD`, and an
+  `OMNIFUSION_API_KEYS` client key) into a `0o600` `.env`, initializes the SQLite
+  DB and key-verification token, prints the generated credentials and next steps,
+  and optionally boots the dev server with `--serve`. Idempotent: real secrets are
+  never overwritten, only placeholder values.
 - **Advertised-claims ledger** (`docs/advertised-claims.md`) mapping every website
   claim ID to its implementation, docs, and tests, enforced offline by
   `make verify-claims` / `scripts/verify_claims.py` and `tests/test_advertised_claims.py`:
