@@ -100,8 +100,12 @@ class PresetV2(BaseModel):
         # `budgets` is the v2 grouped shape; consume it to populate the flat stage
         # fields the runtime reads, then drop it (it is re-exposed as a computed
         # field so it round-trips without being a redundant stored field).
-        budgets = data.pop("budgets", None) or {}
-        if budgets:
+        # Guard against a corrupt/hand-edited row where `budgets` is present but
+        # not an object: a non-dict value here would raise a raw AttributeError
+        # (which pydantic does not wrap into a ValidationError), bypassing the
+        # store's resilient loaders. Ignore it and fall back to the flat fields.
+        budgets = data.pop("budgets", None)
+        if isinstance(budgets, dict) and budgets:
             data.setdefault("panel", budgets.get("panel"))
             data.setdefault("judge", budgets.get("judge"))
             data.setdefault("final", budgets.get("final"))

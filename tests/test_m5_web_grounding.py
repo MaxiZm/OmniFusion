@@ -275,3 +275,86 @@ async def test_web_enabled_run_injects_grounding_into_panel_and_traces_sources(
     web_sources = trace.metadata.get("web_sources")
     assert web_sources and web_sources[0]["url"] == "https://docs.example/x"
     assert web_sources[0]["content_hash"] == "sha256:deadbeef"
+
+
+@pytest.mark.asyncio
+async def test_web_enabled_tool_request_injects_grounding_into_tool_panel_and_trace(
+    tmp_path, monkeypatch
+):
+    import omnifusion.llm.client as client_mod
+
+    old_db = settings.db_path
+    settings.db_path = str(tmp_path / "wg_tool_e2e.db")
+
+    panel_seen = {}
+
+    async def fake_acompletion(provider_id, model, messages, **kwargs):
+        if model == "panel-a":
+            panel_seen["messages"] = messages
+            return _MockResponse("panel answer from grounded web")
+        if model == "judge-a":
+            return _MockResponse("{\"consensus\": \"ok\"}")
+        if model == "final-a":
+            return _MockResponse("final answer")
+        raise AssertionError(f"unexpected model {model}")
+
+    search = _FakeSearch(
+        [SearchResult(title="Doc", url="https://docs.example/tool", snippet="SNIP", source="fake")]
+    )
+    fetcher = _FakeFetcher(
+        {"https://docs.example/tool": _fetch_result("https://docs.example/tool", "TOOL-GROUNDED-CONTENT")}
+    )
+    monkeypatch.setattr(wg, "build_search_provider", lambda *a, **k: search)
+    monkeypatch.setattr(wg, "WebFetcher", lambda *a, **k: fetcher)
+
+    weather_tool = {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Return the weather for a city.",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+            },
+        },
+    }
+
+    try:
+        await init_db()
+        monkeypatch.setattr(client_mod.llm_client, "acompletion", fake_acompletion)
+        stage = PresetStage(max_tokens=64, timeout=5)
+        preset = Preset(
+            name="tool-web",
+            strategy="B",
+            panel_models=["panel-a"],
+            panel=stage,
+            judge_model="judge-a",
+            judge=stage,
+            final_model="final-a",
+            final=stage,
+            web_enabled=True,
+        )
+        request = ChatCompletionRequest(
+            model="fusion/tool-web",
+            messages=[ChatMessage(role="user", content="explain x")],
+            tools=[weather_tool],
+            tool_choice="auto",
+            stream=False,
+            store=True,
+        )
+        response = await run_fusion("wg-tool-e2e", preset, request, "keyhash")
+        trace = await get_trace("wg-tool-e2e", "keyhash")
+    finally:
+        if os.path.exists(settings.db_path):
+            os.remove(settings.db_path)
+        settings.db_path = old_db
+
+    panel_system = [m for m in panel_seen["messages"] if m.get("role") == "system"]
+    assert any("TOOL-GROUNDED-CONTENT" in (m.get("content") or "") for m in panel_system)
+    assert any("UNTRUSTED" in (m.get("content") or "") for m in panel_system)
+
+    assert response["choices"][0]["message"]["content"] == "final answer"
+    assert trace is not None
+    web_sources = trace.metadata.get("web_sources")
+    assert web_sources and web_sources[0]["url"] == "https://docs.example/tool"
+    assert web_sources[0]["content_hash"] == "sha256:deadbeef"

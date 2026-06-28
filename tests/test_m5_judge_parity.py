@@ -152,3 +152,48 @@ async def test_run_judge_honors_experimental_temperature_override(monkeypatch):
         [PanelResult(model="panel-a", status="ok", content="a")],
     )
     assert captured["temperature"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_run_judge_disables_openrouter_reasoning_for_json_judge(monkeypatch):
+    """OpenRouter reasoning models can spend the whole judge budget in hidden
+    reasoning and return content=None. The judge must request ordinary content
+    so the JSON parser has something to parse."""
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+    stage = PresetStage(max_tokens=64, timeout=5)
+    openrouter_preset = Preset(
+        name="judge-openrouter-reasoning",
+        strategy="B",
+        panel_models=["panel-a"],
+        panel=stage,
+        judge_model="openrouter/deepseek/deepseek-v4-pro",
+        judge=stage,
+        final_model="final-a",
+        final=stage,
+    )
+
+    class FakeResponse:
+        class _C:
+            class message:  # noqa: N801 - mimic litellm shape
+                content = '{"consensus": "ok"}'
+
+        choices = [_C()]
+        usage = None
+        _omnifusion_cost_usd = 0.0
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+
+    await judge_mod.run_judge(
+        "run-judge-openrouter-reasoning",
+        openrouter_preset,
+        [{"role": "user", "content": "q"}],
+        [PanelResult(model="panel-a", status="ok", content="a")],
+    )
+
+    assert captured["reasoning"] == {"effort": "none", "exclude": True}

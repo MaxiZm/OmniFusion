@@ -5,9 +5,26 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "omnifusion"
 version = "0.1.0"
-description = "Add your description here"
+description = "Self-hostable OpenAI-compatible council-of-models inference endpoint"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+keywords = [
+    "llm",
+    "openai-compatible",
+    "model-routing",
+    "model-fusion",
+    "self-hosted",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "aiosqlite>=0.22.1",
     "argon2-cffi>=25.1.0",
@@ -31,6 +48,12 @@ pdf = ["pypdf>=4.0.0"]
 
 [project.scripts]
 omnifusion = "omnifusion.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/MaxiZm/OmniFusion"
+Repository = "https://github.com/MaxiZm/OmniFusion"
+Issues = "https://github.com/MaxiZm/OmniFusion/issues"
+Documentation = "https://github.com/MaxiZm/OmniFusion#readme"
 
 [tool.setuptools.packages.find]
 where = ["src"]

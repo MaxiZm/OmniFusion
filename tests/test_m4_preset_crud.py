@@ -143,3 +143,43 @@ async def test_admin_console_save_creates_v2_preset(tmp_path):
     assert isinstance(saved.prompts, PresetPrompts)
     assert saved.prompts.global_prompt == "be concise"
     assert saved.prompts.role_prompts["judge"] == "score"
+
+
+@pytest.mark.asyncio
+async def test_admin_console_save_validation_error_returns_400(tmp_path):
+    from omnifusion.admin.routes import save_preset_route
+
+    old_db = settings.db_path
+    settings.db_path = str(tmp_path / "m4-admin-invalid.db")
+
+    try:
+        await init_db()
+        response = await save_preset_route(
+            name="bad-console",
+            strategy="B",
+            panel_models_raw=["panel-a"],
+            panel_max_tokens=16,
+            panel_timeout=5,
+            judge_model="judge-a",
+            judge_max_tokens=settings.omnifusion_max_tokens_limit + 1,
+            judge_timeout=5,
+            final_model="final-a",
+            final_max_tokens=16,
+            final_timeout=5,
+            cost_ceiling=1.0,
+            on_final_failure="error",
+            min_panel_success=1,
+            display_name="Bad Console",
+            mode="fusion",
+            web_enabled=False,
+            prompt_global="",
+            prompt_panel="",
+            prompt_judge="",
+            prompt_final="",
+            session={"user": "admin"},
+        )
+    finally:
+        settings.db_path = old_db
+
+    assert response.status_code == 400
+    assert b"stage max_tokens must be &lt;=" in response.body

@@ -1,4 +1,5 @@
 from pathlib import Path
+import tomllib
 
 import yaml
 
@@ -72,3 +73,23 @@ def test_changelog_documents_initial_release():
     changelog = Path("CHANGELOG.md").read_text()
     assert "0.1.0" in changelog
     assert "Keep a Changelog" in changelog
+
+
+def test_package_metadata_is_publishable():
+    project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+
+    assert project["description"] != "Add your description here"
+    assert "OpenAI-compatible" in project["description"]
+    assert project["license"] == "Apache-2.0"
+    assert project["urls"]["Repository"] == "https://github.com/MaxiZm/OmniFusion"
+
+
+def test_local_opencode_config_is_not_committed_with_inline_keys():
+    gitignore = Path(".gitignore").read_text()
+    example = Path("opencode.example.json").read_text()
+
+    assert "opencode.json" in gitignore
+    assert "opencode.example.json" not in gitignore
+    assert "OMNIFUSION_API_KEY" in example
+    assert '"apiKey"' not in example
+    assert "sk-" not in example

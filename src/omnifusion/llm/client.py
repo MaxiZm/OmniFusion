@@ -124,6 +124,8 @@ class LLMClient:
             model = f"openai/{model}"
         elif provider_type == "custom_anthropic" and not model.startswith("anthropic/"):
             model = f"anthropic/{model}"
+        elif provider_type == "openrouter" and not model.startswith("openrouter/"):
+            model = f"openrouter/{model}"
 
         # 3. Filter outgoing LLM arguments based on the resolved provider type capabilities
         filtered_kwargs = filter_params(provider_type, kwargs)

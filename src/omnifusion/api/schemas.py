@@ -5,6 +5,7 @@ from ..settings import settings
 
 
 FUNCTION_NAME_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
+FUNCTION_DESCRIPTION_MAX_CHARS = 65536
 
 
 class OpenAIShape(BaseModel):
@@ -16,7 +17,7 @@ class OpenAIShape(BaseModel):
 
 class FunctionToolSpec(OpenAIShape):
     name: str = Field(min_length=1, max_length=128, pattern=FUNCTION_NAME_PATTERN)
-    description: Optional[str] = Field(default=None, max_length=4096)
+    description: Optional[str] = Field(default=None, max_length=FUNCTION_DESCRIPTION_MAX_CHARS)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
 
 

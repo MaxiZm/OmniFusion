@@ -4,13 +4,13 @@
 
 ```bash
 uv sync --group dev
-uv run omnifusion genkey
 cp .env.example .env
+uv run omnifusion genkey
 make dev
 ```
 
-Set `OMNIFUSION_SECRET_KEY`, `OMNIFUSION_ADMIN_PASSWORD`, and
-`OMNIFUSION_API_KEYS` in `.env` before serving requests.
+Copy only the generated key line into `OMNIFUSION_SECRET_KEY` in `.env`, then set
+`OMNIFUSION_ADMIN_PASSWORD` and `OMNIFUSION_API_KEYS` before serving requests.
 
 ## Docker
 

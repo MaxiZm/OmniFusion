@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": [
+    "omnifusion"
+  ],
+  "model": "omnifusion/fusion/general",
+  "small_model": "omnifusion/fusion/general",
+  "provider": {
+    "omnifusion": {
+      "name": "OmniFusion Local",
+      "api": "openai",
+      "env": [
+        "OMNIFUSION_API_KEY"
+      ],
+      "options": {
+        "baseURL": "http://127.0.0.1:8000/v1"
+      },
+      "models": {
+        "fusion/general": {
+          "name": "fusion/general",
+          "tool_call": true,
+          "temperature": true
+        }
+      }
+    }
+  }
+}

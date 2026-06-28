@@ -25,6 +25,9 @@ data/
 # Local config exports (contain decrypted keys)
 omnifusion.yaml
 
+# Local client config (may contain inline API keys)
+opencode.json
+
 # Local eval runs. Promote intentional baselines under evals/coding/baselines/.
 evals/coding/runs/*.json
 evals/coding/runs/*.jsonl

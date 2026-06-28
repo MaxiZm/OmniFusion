@@ -162,6 +162,19 @@ def extract_json_from_text(text: str) -> dict:
     raise ValueError("no JSON object found in response")
 
 
+def _disable_openrouter_deepseek_reasoning_kwargs(model: str) -> dict:
+    """Keep JSON judge responses in message.content for OpenRouter DeepSeek models.
+
+    Without this, DeepSeek reasoning routes can spend the judge token budget in
+    reasoning_content and return content=None, which leaves the JSON parser with
+    nothing to parse.
+    """
+    lower = model.lower()
+    if lower.startswith("openrouter/") and "/deepseek/" in lower:
+        return {"reasoning": {"effort": "none", "exclude": True}}
+    return {}
+
+
 async def run_judge(
     run_id: str, preset: Preset, messages: list, panel_results: List[PanelResult]
 ) -> JudgeAnalysis:
@@ -212,6 +225,7 @@ async def run_judge(
             "timeout": preset.judge.timeout,
             "temperature": judge_temperature,
             "response_format": {"type": "json_object"},
+            **_disable_openrouter_deepseek_reasoning_kwargs(preset.judge_model),
         }
 
         try:

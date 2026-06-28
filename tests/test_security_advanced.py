@@ -320,6 +320,12 @@ def test_passthrough_whitelist_comma_split_from_env(monkeypatch):
     assert s.omnifusion_passthrough_whitelist == ["gpt-4o", "claude-3-5-sonnet"]
 
 
+def test_default_max_tokens_limit_is_one_million(monkeypatch):
+    monkeypatch.delenv("OMNIFUSION_MAX_TOKENS_LIMIT", raising=False)
+    s = Settings(_env_file=None)
+    assert s.omnifusion_max_tokens_limit == 1_000_000
+
+
 # ─── Fix (medium): Redaction filter on handlers ──────────────────────────────
 
 def test_redaction_filter_attached_to_root_handlers():
@@ -717,6 +723,38 @@ async def test_custom_provider_model_is_canonicalized():
     assert captured["api_base"] == "https://my-llm.example.com/v1"
 
 
+@pytest.mark.asyncio
+async def test_openrouter_provider_model_is_prefixed_for_litellm():
+    """OpenRouter provider rows commonly store native OpenRouter IDs like
+    google/gemini-*. LiteLLM needs those routed as openrouter/google/gemini-*."""
+    from omnifusion.llm.client import llm_client
+    from omnifusion.store.providers import save_provider
+
+    await init_db()
+    await save_provider(
+        "openrouter",
+        "openrouter",
+        "sk-openrouter",
+        models=["google/gemini-3.5-flash"],
+    )
+
+    captured = {}
+
+    async def fake_litellm_acompletion(**kwargs):
+        captured.update(kwargs)
+        return MockResponse("ok")
+
+    with patch("litellm.acompletion", side_effect=fake_litellm_acompletion):
+        await llm_client.acompletion(
+            provider_id="openrouter",
+            model="google/gemini-3.5-flash",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+    assert captured["model"] == "openrouter/google/gemini-3.5-flash"
+    assert captured["api_key"] == "sk-openrouter"
+
+
 # ─── P2: legacy/unsupported request fields must be rejected, not dropped ──────
 
 
@@ -744,6 +782,26 @@ def test_tools_fields_accepted():
         tool_choice="auto",
     )
     assert req.tools and req.tool_choice == "auto"
+
+
+def test_opencode_long_tool_descriptions_are_accepted():
+    """OpenCode sends built-in tool descriptions longer than 4096 chars."""
+    req = ChatCompletionRequest(
+        model="fusion/x",
+        messages=[ChatMessage(role="user", content="hi")],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "opencode_tool",
+                    "description": "x" * 5000,
+                    "parameters": {},
+                },
+            }
+        ],
+        tool_choice="auto",
+    )
+    assert req.tools[0].function.description == "x" * 5000
 
 
 def test_agentic_tool_loop_message_shapes_accepted():

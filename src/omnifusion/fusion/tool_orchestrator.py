@@ -57,6 +57,13 @@ def _final_result_cost(final_result) -> float:
     )
 
 
+def _trace_metadata(preset, web_sources) -> dict:
+    metadata = trace_metadata_for_preset(preset)
+    if web_sources:
+        metadata["web_sources"] = web_sources
+    return metadata
+
+
 def _disable_thinking_kwargs(model: str) -> dict:
     """DeepSeek V4 defaults to *thinking* mode, which returns reasoning_content that
     must be passed back on every subsequent turn of a multi-turn tool conversation.
@@ -283,6 +290,15 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     body_dict = body.model_dump(exclude_none=True)
     tools = body_dict.get("tools")
     tool_choice = body_dict.get("tool_choice", "auto")
+    web_sources = []
+
+    if getattr(preset, "web_enabled", False):
+        from .web_grounding import gather_web_context, inject_grounding, latest_user_text
+
+        web_context = await gather_web_context(run_id, latest_user_text(dict_messages))
+        web_sources = web_context.sources
+        if web_context.has_grounding:
+            dict_messages = inject_grounding(dict_messages, web_context.grounding_text)
 
     # 1. Panel proposes next actions (parallel). Forward caller generation params.
     gen_kwargs = generation_passthrough_kwargs(body, include_tool_params=True)
@@ -339,7 +355,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                 consensus=f"Selected tool call from {chosen['model']}",
             ),
             final_answer=None,
-            metadata=trace_metadata_for_preset(preset),
+            metadata=_trace_metadata(preset, web_sources),
         )
         await save_trace(trace, body.store, key_hash)
 
@@ -463,7 +479,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                     wall_ms=int((time.time() - start_time) * 1000),
                     degraded=err is not None, panel_results=panel_results,
                     judge_analysis=judge_analysis, final_answer=completion_text,
-                    metadata=trace_metadata_for_preset(preset),
+                    metadata=_trace_metadata(preset, web_sources),
                 )
                 await save_trace(trace, body.store, key_hash)
             if err is not None:
@@ -479,7 +495,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         wall_ms=int((time.time() - start_time) * 1000),
         degraded=False, panel_results=panel_results,
         judge_analysis=judge_analysis, final_answer=content,
-        metadata=trace_metadata_for_preset(preset),
+        metadata=_trace_metadata(preset, web_sources),
     )
     await save_trace(trace, body.store, key_hash)
     # Aggregate usage across panel + judge + final synthesis (no longer hardcoded 0).
