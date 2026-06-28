@@ -261,6 +261,27 @@ class JudgeAnalysis(BaseModel):
     completion_tokens: int = 0
 
 
+class StageEvent(BaseModel):
+    """One bounded record of a single stage call inside a fusion run.
+
+    Additive and optional: old stored traces simply have an empty `stage_events`
+    list. Carries no prompt/response bodies — only the per-stage accounting an
+    operator needs to read a run end to end (who ran, status, tokens, cost,
+    timing, and a short error code on failure).
+    """
+
+    stage: str  # web | panel | judge | synthesis | completion
+    role: Optional[str] = None  # panel | judge | final
+    provider_id: Optional[str] = None
+    model: Optional[str] = None
+    status: str = "ok"  # ok | error | timeout | rate_limited | degraded | skipped
+    tokens: Optional[Dict[str, int]] = None  # {"prompt": int, "completion": int}
+    cost_usd: float = 0.0
+    wall_ms: Optional[int] = None
+    error_code: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class FusionTrace(BaseModel):
     run_id: str
     preset: str
@@ -270,6 +291,9 @@ class FusionTrace(BaseModel):
     panel_results: List[PanelResult]
     judge_analysis: Optional[JudgeAnalysis] = None
     final_answer: Optional[str] = None
+    # Additive, bounded, per-stage timeline. Defaults empty so traces stored before
+    # this field existed still validate.
+    stage_events: List[StageEvent] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -279,6 +303,132 @@ def trace_metadata_for_preset(preset: Preset) -> Dict[str, Any]:
     if prompts and (prompts.global_prompt or prompts.role_prompts):
         metadata["role_prompts_redacted"] = True
     return metadata
+
+
+def _read_tokens(usage: Any) -> Optional[Dict[str, int]]:
+    """Defensively read prompt/completion tokens from a provider usage object or
+    dict. Returns None if nothing usable is present. Never raises."""
+    if usage is None:
+        return None
+
+    def _get(name: str) -> int:
+        try:
+            if isinstance(usage, dict):
+                value = usage.get(name)
+            else:
+                value = getattr(usage, name, None)
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    prompt = _get("prompt_tokens")
+    completion = _get("completion_tokens")
+    if prompt == 0 and completion == 0:
+        return None
+    return {"prompt": prompt, "completion": completion}
+
+
+def build_stage_events(
+    preset: Preset,
+    panel_results: List["PanelResult"],
+    judge_analysis: Optional["JudgeAnalysis"],
+    final_answer: Optional[str],
+    synth_cost: float = 0.0,
+    synth_usage: Any = None,
+    web_sources: Optional[List[Any]] = None,
+    degraded: bool = False,
+) -> List["StageEvent"]:
+    """Derive a bounded per-stage timeline from the data already collected on a
+    fusion run. Centralized so every FusionTrace construction site stays in sync.
+
+    Carries no prompt/response bodies — only accounting fields. Defensive: it never
+    raises, so trace persistence can never be broken by a malformed stage record.
+    """
+    events: List[StageEvent] = []
+
+    try:
+        if web_sources:
+            domains: List[str] = []
+            for src in web_sources:
+                url = ""
+                if isinstance(src, dict):
+                    url = src.get("url") or src.get("domain") or ""
+                else:
+                    url = getattr(src, "url", "") or getattr(src, "domain", "") or ""
+                if url:
+                    domains.append(str(url)[:120])
+            events.append(
+                StageEvent(
+                    stage="web",
+                    status="ok",
+                    metadata={
+                        "source_count": len(web_sources),
+                        "sources": domains[:8],
+                    },
+                )
+            )
+
+        for result in panel_results or []:
+            model = getattr(result, "model", None)
+            events.append(
+                StageEvent(
+                    stage="panel",
+                    role="panel",
+                    provider_id=preset.provider_id_for(model, "panel")
+                    if model
+                    else None,
+                    model=model,
+                    status=getattr(result, "status", "ok") or "ok",
+                    tokens=_read_tokens(getattr(result, "usage", None)),
+                    cost_usd=float(getattr(result, "cost_usd", 0.0) or 0.0),
+                    error_code=None
+                    if getattr(result, "status", "ok") == "ok"
+                    else getattr(result, "status", None),
+                )
+            )
+
+        if judge_analysis is not None:
+            judge_tokens = {
+                "prompt": int(getattr(judge_analysis, "prompt_tokens", 0) or 0),
+                "completion": int(getattr(judge_analysis, "completion_tokens", 0) or 0),
+            }
+            if judge_tokens["prompt"] == 0 and judge_tokens["completion"] == 0:
+                judge_tokens = None
+            events.append(
+                StageEvent(
+                    stage="judge",
+                    role="judge",
+                    provider_id=preset.provider_id_for(preset.judge_model, "judge")
+                    if preset.judge_model
+                    else None,
+                    model=preset.judge_model or None,
+                    status="degraded" if degraded else "ok",
+                    tokens=judge_tokens,
+                    cost_usd=float(getattr(judge_analysis, "cost_usd", 0.0) or 0.0),
+                )
+            )
+
+        # Synthesis ran whenever there is a final answer (the best-panel fallback also
+        # produces a final answer but no synthesis cost — both are captured honestly).
+        if final_answer is not None or synth_cost:
+            events.append(
+                StageEvent(
+                    stage="synthesis",
+                    role="final",
+                    provider_id=preset.provider_id_for(preset.final_model, "final")
+                    if preset.final_model
+                    else None,
+                    model=preset.final_model or None,
+                    status="ok" if final_answer is not None else "error",
+                    tokens=_read_tokens(synth_usage),
+                    cost_usd=float(synth_cost or 0.0),
+                )
+            )
+    except Exception:
+        # Never let timeline construction break trace persistence.
+        return events
+
+    return events
 
 
 def role_prompt_content(preset: Preset, role: str) -> str:

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <span class="eyebrow">Instrument 07</span>
+        <h1>Budget ledger</h1>
+    </div>
+    <p class="page-subtitle">Reserve-and-reconcile accounting state for {{ budget.today }}. Integer microdollars in SQLite, shown here in USD.</p>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Global daily window</h2>
+            <div class="subtitle">scope · global · {{ budget.today }}</div>
+        </div>
+        <span class="badge {% if budget.open_reservations > 0 %}bg-warning{% else %}bg-success{% endif %}">
+            {{ budget.open_reservations }} open reservation{{ '' if budget.open_reservations == 1 else 's' }}
+        </span>
+    </div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Reserved</th><th>Spent</th><th>Ceiling</th><th>Remaining</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td class="cell-cost">${{ budget.global_daily.reserved_usd }}</td>
+                        <td class="cell-cost">${{ budget.global_daily.spent_usd }}</td>
+                        <td class="cell-cost">${{ budget.global_daily.ceiling_usd }}</td>
+                        <td class="cell-cost">${{ budget.global_daily.remaining_usd }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><div><h2>Recent request windows</h2><div class="subtitle">latest {{ budget.requests|length }}</div></div></div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Run ID</th><th class="num">Reserved</th><th class="num">Spent</th><th class="num">Ceiling</th></tr></thead>
+                <tbody>
+                    {% for r in budget.requests %}
+                    <tr>
+                        <td class="cell-id">{{ r.run_id }}</td>
+                        <td class="num cell-cost">${{ r.reserved_usd }}</td>
+                        <td class="num cell-cost">${{ r.spent_usd }}</td>
+                        <td class="num cell-cost">${{ r.ceiling_usd }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="empty-cell"><div class="empty"><span class="empty-title">No request budgets recorded</span></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><div><h2>Recent reservations</h2><div class="subtitle">reserve → reconcile / cancel</div></div></div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Run ID</th><th>Stage</th><th class="num">Reserved</th><th>State</th><th>Created</th></tr></thead>
+                <tbody>
+                    {% for r in budget.reservations %}
+                    <tr>
+                        <td class="cell-id">{{ r.run_id }}</td>
+                        <td class="cell-mono cell-muted">{{ r.stage }}</td>
+                        <td class="num cell-cost">${{ r.reserved_usd }}</td>
+                        <td>
+                            <span class="badge {% if r.state == 'reconciled' %}bg-success{% elif r.state == 'cancelled' %}bg-neutral no-dot{% else %}bg-warning{% endif %}">{{ r.state }}</span>
+                        </td>
+                        <td class="cell-faint">{{ r.created_at or '—' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="empty-cell"><div class="empty"><span class="empty-title">No reservations recorded</span></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="actions" style="display:flex;gap:12px;margin-top:18px;">
+    <a href="/admin/budget.json" class="btn btn-secondary" target="_blank" rel="noopener">View JSON</a>
+    <a href="/admin/runs" class="btn btn-secondary">Run history</a>
+</div>
+{% endblock %}

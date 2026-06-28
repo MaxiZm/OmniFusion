@@ -25,6 +25,27 @@ Web-fetch traces store source URL, bounded metadata, content hash, excerpt,
 cache-hit status, and truncation state by default. Full fetched pages are not
 persisted unless an operator explicitly enables that retention.
 
+### Stage events
+
+Each trace additionally carries an optional `stage_events` list: a bounded,
+per-stage timeline of the run. Every event records its `stage` (`web`, `panel`,
+`judge`, `synthesis`, or `completion`), `role`, `provider_id`, `model`, `status`,
+`tokens`, `cost_usd`, `wall_ms`, an optional `error_code`, and bounded metadata —
+never prompt or response bodies. The field is additive: traces stored before it
+existed simply load with an empty list. The admin run-history view renders this
+timeline with a raw-JSON toggle.
+
+## Admin Visibility
+
+The admin console surfaces two read-only operator views backed by JSON routes:
+
+- **Diagnostics** (`/admin/diagnostics`, `/admin/diagnostics.json`) — startup
+  readiness, DB/WAL health, configured-key and provider counts, default-preset
+  existence, web-search configuration, and deployment-hardening warnings. No
+  secrets are shown — counts, flags, and identifiers only.
+- **Budget** (`/admin/budget`, `/admin/budget.json`) — the global daily window,
+  recent per-request windows, and recent reservations with their reconcile state.
+
 ## Access Pattern
 
 Use the trace id returned in response headers to retrieve the run through the

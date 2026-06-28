@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, Form, HTTPException, status, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
 from argon2 import PasswordHasher
@@ -32,6 +32,8 @@ from ..fusion.types import Preset, PresetPrompts, PresetStage
 from ..fusion.runtime.registry import registry as strategy_registry
 from .jobs import job_registry, run_playground_job
 from .csrf import generate_csrf_token
+from .diagnostics import collect_diagnostics
+from .budget_view import collect_budget_summary
 
 router = APIRouter()
 
@@ -301,6 +303,30 @@ async def dashboard(request: Request, session=Depends(verify_admin_session)):
         "daily_ceiling": daily_ceiling,
     }
     return render_template("dashboard.html", request, context, session)
+
+
+@router.get("/diagnostics", response_class=HTMLResponse)
+async def diagnostics_page(request: Request, session=Depends(verify_admin_session)):
+    diagnostics = await collect_diagnostics()
+    return render_template(
+        "diagnostics.html", request, {"diag": diagnostics}, session
+    )
+
+
+@router.get("/diagnostics.json")
+async def diagnostics_json(session=Depends(verify_admin_session)):
+    return JSONResponse(await collect_diagnostics())
+
+
+@router.get("/budget", response_class=HTMLResponse)
+async def budget_page(request: Request, session=Depends(verify_admin_session)):
+    summary = await collect_budget_summary()
+    return render_template("budget.html", request, {"budget": summary}, session)
+
+
+@router.get("/budget.json")
+async def budget_json(session=Depends(verify_admin_session)):
+    return JSONResponse(await collect_budget_summary())
 
 
 @router.get("/providers", response_class=HTMLResponse)
@@ -585,19 +611,24 @@ async def runs_history(request: Request, session=Depends(verify_admin_session)):
     return render_template("runs.html", request, {"runs": runs}, session)
 
 
-@router.get("/runs/{run_id}/trace")
-async def view_run_trace(run_id: str, session=Depends(verify_admin_session)):
+@router.get("/runs/{run_id}/trace", response_class=HTMLResponse)
+async def view_run_trace(
+    request: Request, run_id: str, session=Depends(verify_admin_session)
+):
     from ..store.runs import get_trace
 
     trace = await get_trace(run_id)
     if not trace:
         raise HTTPException(status_code=404, detail="Trace not found")
 
-    import html
-
-    raw_json = trace.model_dump_json(indent=2)
-    escaped_json = html.escape(raw_json)
-
-    return HTMLResponse(
-        f"<pre class='text-light bg-dark p-3 rounded'><code>{escaped_json}</code></pre>"
+    # Render a stage timeline (from the additive stage_events) with a raw-JSON toggle.
+    # Older stored runs have no stage_events; the template falls back to JSON-only.
+    return templates.TemplateResponse(
+        request,
+        "trace_detail.html",
+        {
+            "trace": trace,
+            "stage_events": trace.stage_events,
+            "trace_json": trace.model_dump_json(indent=2),
+        },
     )

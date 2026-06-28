@@ -1,4 +1,4 @@
-.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-tool-smoke eval-ablation-validate
+.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-tool-smoke eval-ablation-validate verify-claims compat-openai-python compat-openai-node compat-aider compat-opencode compat-cursor
 
 EVAL_CODING_FLAGS :=
 ifeq ($(EVAL_MOCK),1)
@@ -67,3 +67,22 @@ eval-tool-smoke:
 eval-ablation-validate:
 	@test -n "$(ABLATION_ARTIFACT)" || (echo "Set ABLATION_ARTIFACT=path/to/artifact.json" && exit 2)
 	uv run python -m omnifusion.evals.ablations $(ABLATION_ARTIFACT)
+
+# Offline gate: the advertised-claims ledger must back every covered claim with
+# real evidence, match the website's claim IDs, and stay honest about benchmarks.
+verify-claims:
+	uv run python scripts/verify_claims.py
+
+# Client compatibility smokes. Opt-in / live: set OMNIFUSION_BASE_URL and
+# OMNIFUSION_API_KEY to exercise a running instance; otherwise they skip (exit 0).
+compat-openai-python:
+	uv run python scripts/compat/openai_python.py
+
+compat-openai-node:
+	node scripts/compat/openai_node.mjs
+
+# Aider / OpenCode / Cursor are documented, reproducible operator checklists —
+# they require interactive clients and real providers, so they print the steps
+# rather than driving the third-party tool from CI.
+compat-aider compat-opencode compat-cursor:
+	@echo "See docs/compatibility-matrix.md for the $(@:compat-%=%) checklist (opt-in, live)."

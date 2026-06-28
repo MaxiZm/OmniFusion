@@ -133,6 +133,72 @@ async def list_providers() -> List[dict]:
     return providers
 
 
+def _redacted_record(
+    p_id: str,
+    p_type: str,
+    base_url: Optional[str],
+    api_key_ref: Optional[str],
+    has_encrypted_key: bool,
+    models: List[str],
+) -> dict:
+    """The only provider shape ever returned to API readers: identifiers and
+    metadata, plus a boolean for whether a key is stored — never the key itself."""
+    return {
+        "id": p_id,
+        "type": p_type,
+        "base_url": base_url,
+        "api_key_ref": api_key_ref,
+        "has_encrypted_key": bool(has_encrypted_key),
+        "models": list(models or []),
+    }
+
+
+async def list_provider_metas() -> List[dict]:
+    """Redacted provider records for public reads. Selects `enc_key IS NOT NULL`
+    instead of the ciphertext, so no secret material is ever loaded into memory."""
+    metas: List[dict] = []
+    async with get_db_connection() as db:
+        cursor = await db.execute(
+            "SELECT id, type, base_url, api_key_ref, models_json, (enc_key IS NOT NULL) "
+            "FROM providers ORDER BY id"
+        )
+        async for row in cursor:
+            p_id, p_type, base_url, ref, models_json, has_key = row
+            metas.append(
+                _redacted_record(
+                    p_id,
+                    p_type,
+                    base_url,
+                    ref,
+                    bool(has_key),
+                    json.loads(models_json) if models_json else [],
+                )
+            )
+    return metas
+
+
+async def get_provider_meta(provider_id: str) -> Optional[dict]:
+    """Redacted single provider record for public reads, or None if absent."""
+    async with get_db_connection() as db:
+        cursor = await db.execute(
+            "SELECT id, type, base_url, api_key_ref, models_json, (enc_key IS NOT NULL) "
+            "FROM providers WHERE id=?",
+            (provider_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        p_id, p_type, base_url, ref, models_json, has_key = row
+        return _redacted_record(
+            p_id,
+            p_type,
+            base_url,
+            ref,
+            bool(has_key),
+            json.loads(models_json) if models_json else [],
+        )
+
+
 async def save_provider(
     provider_id: str,
     p_type: str,

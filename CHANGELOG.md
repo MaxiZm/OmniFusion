@@ -6,6 +6,31 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Advertised-claims ledger** (`docs/advertised-claims.md`) mapping every website
+  claim ID to its implementation, docs, and tests, enforced offline by
+  `make verify-claims` / `scripts/verify_claims.py` and `tests/test_advertised_claims.py`:
+  covered claims must cite real evidence, website `data-claim-id`s must exist in the
+  ledger, and no affirmative benchmark/Fugu *advantage* wording may appear without an
+  accepted Tier C artifact.
+- **Provider management API** under `/v1` and `/api/v1` (`GET`/`PUT`/`DELETE`
+  `/providers[/{id}]`, `POST /providers/{id}/test`). Reads are redacted
+  (`has_encrypted_key`, never plaintext or ciphertext); `api_key` is write-only and
+  omitting it preserves the stored key, while `api_key_ref` switches to env-ref mode.
+- **Operator diagnostics** (`/admin/diagnostics` + `.json`) — startup readiness,
+  DB/WAL health, key/provider/preset/web-search configuration, and deployment
+  warnings, with no secret material.
+- **Budget & trace visibility** — `/admin/budget` (+ `.json`) for ledger and
+  reservation state, and a stage-timeline run-trace view with a raw-JSON toggle.
+- **`FusionTrace.stage_events`** — additive, bounded per-stage timeline (stage,
+  role, provider, model, status, tokens, cost, timing, error code) populated for
+  fusion and single-model runs; old stored traces still validate.
+- **Compatibility smokes** — runnable OpenAI Python (`scripts/compat/openai_python.py`)
+  and Node (`scripts/compat/openai_node.mjs`) scripts (opt-in, skip without endpoint
+  env), plus reproducible Aider/OpenCode/Cursor checklists in
+  `docs/compatibility-matrix.md`. New `make` targets: `verify-claims`,
+  `compat-openai-python`, `compat-openai-node`.
+
 ## [0.1.0]
 
 Initial eval-first roadmap implementation (Step 0 → M9).
