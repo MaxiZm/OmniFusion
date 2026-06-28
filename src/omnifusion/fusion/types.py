@@ -60,6 +60,83 @@ class PresetBandit(BaseModel):
     exploration: float = Field(default=0.5, ge=0)
 
 
+class SelfFusionConfig(BaseModel):
+    n: int = Field(default=3, ge=1, le=16)
+    temperature_spread: List[float] = Field(default_factory=lambda: [0.3, 0.7, 1.0])
+    seed_offset: bool = True
+
+
+class DebateConfig(BaseModel):
+    rounds: int = Field(default=1, ge=1, le=3)
+
+
+class RouteModelConfig(BaseModel):
+    model: str
+    tier: Literal["fast", "balanced", "strong"] = "balanced"
+    provider_id: Optional[str] = None
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("route model must not be empty")
+        return value
+
+    @field_validator("provider_id")
+    @classmethod
+    def validate_provider_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("route provider_id must not be empty")
+        return value
+
+
+class RouterConfig(BaseModel):
+    enabled: bool = False
+    mode: Literal["heuristic", "model", "always", "never"] = "heuristic"
+    min_chars: int = Field(default=280, ge=0)
+    fuse_keywords: List[str] = Field(
+        default_factory=lambda: [
+            "compare",
+            "trade-off",
+            "tradeoff",
+            "analyze",
+            "analyse",
+            "evaluate",
+            "design",
+            "research",
+            "pros and cons",
+            "why",
+            "explain",
+            "critique",
+            "recommend",
+            "debug",
+            "architecture",
+        ]
+    )
+    classifier_model: Optional[str] = None
+    classifier_provider_id: Optional[str] = None
+    classifier_max_tokens: int = Field(default=4, ge=1, le=64)
+    route_models: List[RouteModelConfig] = Field(default_factory=list)
+    fuse_only_with_tools: bool = False
+
+    @field_validator("classifier_model", "classifier_provider_id")
+    @classmethod
+    def validate_optional_string(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("router classifier fields must not be empty")
+        return value
+
+
+class AnalysisEmitConfig(BaseModel):
+    enabled: bool = False
+
+
+class ResponseCacheConfig(BaseModel):
+    enabled: bool = False
+    ttl_seconds: int = Field(default=300, ge=1)
+    max_entries: int = Field(default=512, ge=1)
+
+
 class PresetV2(BaseModel):
     name: str
     display_name: Optional[str] = None
@@ -78,6 +155,13 @@ class PresetV2(BaseModel):
     cost_ceiling: Optional[float] = None
     on_final_failure: Literal["error", "best_panel"] = "error"
     min_panel_success: int = 1
+    fusion_mode: Literal["panel", "self_fusion", "debate"] = "panel"
+    aggregator: Literal["judge", "vote", "ranked"] = "judge"
+    self_fusion: SelfFusionConfig = Field(default_factory=SelfFusionConfig)
+    debate: DebateConfig = Field(default_factory=DebateConfig)
+    router: RouterConfig = Field(default_factory=RouterConfig)
+    analysis_emit: AnalysisEmitConfig = Field(default_factory=AnalysisEmitConfig)
+    response_cache: ResponseCacheConfig = Field(default_factory=ResponseCacheConfig)
     # Server-side web grounding for the panel ("web on"). Opt-in per preset; a
     # request's `plugins.web` overrides this for a single request (M5).
     web_enabled: bool = False
@@ -299,6 +383,14 @@ class FusionTrace(BaseModel):
 
 def trace_metadata_for_preset(preset: Preset) -> Dict[str, Any]:
     metadata: Dict[str, Any] = {"preset_version": getattr(preset, "version", 1)}
+    metadata["openfusion"] = {
+        "fusion_mode": getattr(preset, "fusion_mode", "panel"),
+        "aggregator": getattr(preset, "aggregator", "judge"),
+        "router_enabled": bool(getattr(getattr(preset, "router", None), "enabled", False)),
+        "response_cache_enabled": bool(
+            getattr(getattr(preset, "response_cache", None), "enabled", False)
+        ),
+    }
     prompts = getattr(preset, "prompts", None)
     if prompts and (prompts.global_prompt or prompts.role_prompts):
         metadata["role_prompts_redacted"] = True

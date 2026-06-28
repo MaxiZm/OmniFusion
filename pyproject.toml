@@ -48,6 +48,7 @@ pdf = ["pypdf>=4.0.0"]
 
 [project.scripts]
 omnifusion = "omnifusion.cli:main"
+openfusion = "omnifusion.openfusion_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/MaxiZm/OmniFusion"
@@ -60,6 +61,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 omnifusion = [
+    "OPENFUSION_NOTICE.md",
     "web/templates/*.html",
     "fusion/prompts/*.j2",
 ]

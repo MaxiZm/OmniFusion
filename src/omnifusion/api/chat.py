@@ -6,7 +6,11 @@ from .errors import OmniFusionError
 from .model_names import normalize_requested_model
 from .normalize import generation_passthrough_kwargs
 from ..fusion.orchestrator import run_fusion
-from ..fusion.plugins import apply_plugins_override
+from ..fusion.openfusion_runtime import (
+    mixed_server_and_function_tools,
+    server_web_tools_requested,
+)
+from ..fusion.plugins import apply_openfusion_override, apply_plugins_override
 from ..store.presets import get_preset
 from ..settings import settings
 from ..llm.client import llm_client
@@ -330,6 +334,18 @@ async def create_chat_completion(
             if not preset:
                 raise OmniFusionError(f"Preset {preset_name} not found", status_code=404)
             preset = await apply_plugins_override(preset, body.plugins)
+            preset = await apply_openfusion_override(preset, body.openfusion)
+
+            if mixed_server_and_function_tools(body.tools):
+                raise OmniFusionError(
+                    "OpenRouter server web tools cannot be combined with client-side function tools.",
+                    status_code=400,
+                    type_="invalid_request_error",
+                    code="mixed_tool_modes",
+                )
+            if server_web_tools_requested(body.tools):
+                preset = preset.model_copy(update={"web_enabled": True})
+                body = body.model_copy(update={"tools": None})
 
             # Fix #13: Wrap strategy execution with wall_timeout from settings.
             try:
@@ -355,6 +371,13 @@ async def create_chat_completion(
         else:
             # Check passthrough whitelist
             if body.model in settings.omnifusion_passthrough_whitelist:
+                if server_web_tools_requested(body.tools):
+                    raise OmniFusionError(
+                        "OpenRouter server web tools are only supported through fusion/openfusion models.",
+                        status_code=400,
+                        type_="invalid_request_error",
+                        code="server_tools_require_fusion",
+                    )
                 extra = None
                 if body.tools:
                     body_dict = body.model_dump(exclude_none=True)

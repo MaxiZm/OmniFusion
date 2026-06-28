@@ -22,8 +22,17 @@ class FunctionToolSpec(OpenAIShape):
 
 
 class ToolDefinition(OpenAIShape):
-    type: Literal["function"]
-    function: FunctionToolSpec
+    type: Literal["function", "openrouter:web_search", "openrouter:web_fetch"]
+    function: Optional[FunctionToolSpec] = None
+    parameters: Optional[dict[str, JsonValue]] = None
+
+    @model_validator(mode="after")
+    def validate_tool_shape(self):
+        if self.type == "function" and self.function is None:
+            raise ValueError("function tools must include a function definition.")
+        if self.type != "function" and self.function is not None:
+            raise ValueError("OpenRouter server tools must not include function.")
+        return self
 
 
 class ToolCallFunction(OpenAIShape):
@@ -79,8 +88,13 @@ class StreamOptions(BaseModel):
 class FusionPlugins(OpenAIShape):
     analysis_models: Optional[List[str]] = None
     synthesis_model: Optional[str] = None
+    judge_model: Optional[str] = None
     web: Optional[bool] = None
     max_panel: Optional[int] = None
+    fusion_mode: Optional[Literal["panel", "self_fusion", "debate"]] = None
+    aggregator: Optional[Literal["judge", "vote", "ranked"]] = None
+    analysis_emit: Optional[bool] = None
+    routing: Optional[bool] = None
 
     @field_validator("analysis_models")
     @classmethod
@@ -97,11 +111,11 @@ class FusionPlugins(OpenAIShape):
             raise ValueError("plugins.analysis_models must not contain empty model names.")
         return value
 
-    @field_validator("synthesis_model")
+    @field_validator("synthesis_model", "judge_model")
     @classmethod
     def validate_synthesis_model(cls, value: Optional[str]) -> Optional[str]:
         if value is not None and not value.strip():
-            raise ValueError("plugins.synthesis_model must not be empty.")
+            raise ValueError("plugin model fields must not be empty.")
         return value
 
     @field_validator("max_panel")
@@ -113,6 +127,108 @@ class FusionPlugins(OpenAIShape):
             raise ValueError("plugins.max_panel must be >= 1.")
         if value > settings.max_panel:
             raise ValueError(f"plugins.max_panel must be <= {settings.max_panel}.")
+        return value
+
+
+class OpenFusionRouteModel(OpenAIShape):
+    model: str
+    tier: Literal["fast", "balanced", "strong"] = "balanced"
+    provider_id: Optional[str] = None
+
+    @field_validator("model", "provider_id")
+    @classmethod
+    def validate_optional_strings(cls, value: Optional[str], info) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError(f"openfusion.route_models.{info.field_name} must not be empty.")
+        return value
+
+
+class OpenFusionRouter(OpenAIShape):
+    enabled: Optional[bool] = None
+    mode: Optional[Literal["heuristic", "model", "always", "never"]] = None
+    min_chars: Optional[int] = Field(default=None, ge=0)
+    fuse_keywords: Optional[List[str]] = None
+    classifier_model: Optional[str] = None
+    classifier_provider_id: Optional[str] = None
+    classifier_max_tokens: Optional[int] = Field(default=None, ge=1, le=64)
+    route_models: Optional[List[OpenFusionRouteModel]] = None
+    fuse_only_with_tools: Optional[bool] = None
+
+    @field_validator("classifier_model", "classifier_provider_id")
+    @classmethod
+    def validate_classifier_fields(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("openfusion.router classifier fields must not be empty.")
+        return value
+
+    @field_validator("fuse_keywords")
+    @classmethod
+    def validate_fuse_keywords(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return value
+        if any(not keyword.strip() for keyword in value):
+            raise ValueError("openfusion.router.fuse_keywords must not contain empty strings.")
+        return value
+
+
+class OpenFusionSelfFusion(OpenAIShape):
+    n: Optional[int] = Field(default=None, ge=1, le=16)
+    temperature_spread: Optional[List[float]] = None
+    seed_offset: Optional[bool] = None
+
+
+class OpenFusionDebate(OpenAIShape):
+    rounds: Optional[int] = Field(default=None, ge=1, le=3)
+
+
+class OpenFusionResponseCache(OpenAIShape):
+    enabled: Optional[bool] = None
+    ttl_seconds: Optional[int] = Field(default=None, ge=1)
+    max_entries: Optional[int] = Field(default=None, ge=1)
+
+
+class OpenFusionOverrides(OpenAIShape):
+    preset: Optional[Literal["quality", "budget"]] = None
+    panel_models: Optional[List[str]] = None
+    judge_model: Optional[str] = None
+    final_model: Optional[str] = None
+    fusion_mode: Optional[Literal["panel", "self_fusion", "debate"]] = None
+    aggregator: Optional[Literal["judge", "vote", "ranked"]] = None
+    self_fusion: Optional[OpenFusionSelfFusion] = None
+    debate: Optional[OpenFusionDebate] = None
+    router: Optional[OpenFusionRouter] = None
+    analysis_emit: Optional[bool] = None
+    response_cache: Optional[OpenFusionResponseCache] = None
+    web: Optional[bool] = None
+    max_panel: Optional[int] = Field(default=None, ge=1)
+
+    @field_validator("panel_models")
+    @classmethod
+    def validate_panel_models(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return value
+        if not value:
+            raise ValueError("openfusion.panel_models must contain at least one model.")
+        if len(value) > settings.max_panel:
+            raise ValueError(
+                f"openfusion.panel_models must contain at most {settings.max_panel} models."
+            )
+        if any(not model.strip() for model in value):
+            raise ValueError("openfusion.panel_models must not contain empty model names.")
+        return value
+
+    @field_validator("judge_model", "final_model")
+    @classmethod
+    def validate_models(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("openfusion model fields must not be empty.")
+        return value
+
+    @field_validator("max_panel")
+    @classmethod
+    def validate_max_panel(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and value > settings.max_panel:
+            raise ValueError(f"openfusion.max_panel must be <= {settings.max_panel}.")
         return value
 
 
@@ -135,6 +251,7 @@ class ChatCompletionRequest(BaseModel):
     parallel_tool_calls: Optional[bool] = None
     service_tier: Optional[str] = None
     plugins: Optional[FusionPlugins] = None
+    openfusion: Optional[OpenFusionOverrides] = None
 
     # We must explicitly reject these with an error
     tools: Optional[List[ToolDefinition]] = None
