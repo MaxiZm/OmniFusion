@@ -1,8 +1,10 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import hashlib
+import hmac
 import secrets
 from ..settings import settings
+from .errors import ConfigurationError
 
 security = HTTPBearer()
 
@@ -21,6 +23,18 @@ def _constant_time_eq(a: str, b: str) -> bool:
 
 
 def get_key_hash(key: str) -> str:
+    secret = settings.omnifusion_secret_key
+    if not secret:
+        raise ConfigurationError("OMNIFUSION_SECRET_KEY is required for API key hashing")
+    digest = hmac.new(
+        secret.get_secret_value().encode("utf-8"),
+        key.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"hmac-sha256:{digest}"
+
+
+def get_legacy_key_hash(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 

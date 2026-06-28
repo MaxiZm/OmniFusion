@@ -3,8 +3,10 @@ from fastapi.responses import StreamingResponse
 from .schemas import ChatCompletionRequest
 from .auth import verify_api_key
 from .errors import OmniFusionError
+from .model_names import normalize_requested_model
+from .normalize import generation_passthrough_kwargs
 from ..fusion.orchestrator import run_fusion
-from ..fusion.tool_orchestrator import run_fusion_with_tools
+from ..fusion.plugins import apply_plugins_override
 from ..store.presets import get_preset
 from ..settings import settings
 from ..llm.client import llm_client
@@ -15,7 +17,9 @@ import logging
 from ..budget.ledger import initialize_request_budget, reserve_budget, reconcile_budget
 from ..store.runs import save_trace
 from ..fusion.types import FusionTrace
-from .sse import wants_usage, usage_chunk_sse
+from .sse import wants_usage
+from ..fusion.runtime.streaming import StreamingAdapter
+from ..logging_config import set_run_id
 from ..providers.pricing import (
     estimate_call_cost,
     calculate_actual_cost,
@@ -114,6 +118,9 @@ async def _single_model_completion(
         "max_tokens": body.max_tokens,
         "stop": body.stop,
     }
+    # Forward generation-affecting params (seed/penalties/service_tier/parallel_tool_calls)
+    # so a passthrough caller's request actually takes effect instead of being dropped.
+    call_kwargs.update(generation_passthrough_kwargs(body, include_tool_params=True))
     if extra_kwargs:
         call_kwargs.update(extra_kwargs)
     call_kwargs = {k: v for k, v in call_kwargs.items() if v is not None}
@@ -135,6 +142,7 @@ async def _single_model_completion(
 
         if body.stream:
             first_chunk = await response_obj.__anext__()
+            adapter = StreamingAdapter(model)
 
             async def stream_gen():
                 completion_text = ""
@@ -148,7 +156,7 @@ async def _single_model_completion(
                             completion_text += delta.content
                     if getattr(first_chunk, "usage", None):
                         stream_usage = first_chunk.usage
-                    yield f"data: {first_chunk.model_dump_json()}\n\n"
+                    yield adapter.chunk_sse(first_chunk)
 
                     async for chunk in response_obj:
                         if chunk.choices and len(chunk.choices) > 0:
@@ -157,7 +165,7 @@ async def _single_model_completion(
                                 completion_text += delta.content
                         if getattr(chunk, "usage", None):
                             stream_usage = chunk.usage
-                        yield f"data: {chunk.model_dump_json()}\n\n"
+                        yield adapter.chunk_sse(chunk)
 
                     # Prefer provider-reported usage from the terminal chunk; only
                     # fall back to the char//4 heuristic when the stream omits usage.
@@ -169,8 +177,8 @@ async def _single_model_completion(
                         completion_tokens = max(1, len(completion_text) // 4)
 
                     if wants_usage(body):
-                        yield usage_chunk_sse(model, prompt_tokens, completion_tokens)
-                    yield "data: [DONE]\n\n"
+                        yield adapter.usage_sse(prompt_tokens, completion_tokens)
+                    yield adapter.done_sse()
                 finally:
                     async def _cleanup():
                         pt = prompt_tokens or estimate_tokens(model, dict_messages)
@@ -250,6 +258,11 @@ async def create_chat_completion(
     run_id = str(uuid.uuid4())
     request.state.run_id = run_id
     response.headers["X-OmniFusion-Run-Id"] = run_id
+    set_run_id(run_id)
+
+    normalized_model = normalize_requested_model(body.model)
+    if normalized_model != body.model:
+        body = body.model_copy(update={"model": normalized_model})
 
     # Fix #11: Acquire per-key concurrency slot
     sem = None
@@ -270,30 +283,9 @@ async def create_chat_completion(
             preset = await get_preset(preset_name)
             if not preset:
                 raise OmniFusionError(f"Preset {preset_name} not found", status_code=404)
+            preset = await apply_plugins_override(preset, body.plugins)
 
-            # Tool-calling requests: fuse the NEXT ACTION at every agentic step —
-            # the panel proposes actions, the judge picks the best, we return it.
-            # (See fusion/tool_orchestrator.py.) Keeps the council's benefit for
-            # agentic/Draco-style tasks instead of bypassing fusion.
-            if body.tools:
-                try:
-                    result = await asyncio.wait_for(
-                        run_fusion_with_tools(run_id, preset, body, key_hash),
-                        timeout=settings.omnifusion_wall_timeout,
-                    )
-                except asyncio.TimeoutError:
-                    raise OmniFusionError(
-                        f"Request exceeded wall timeout of {settings.omnifusion_wall_timeout}s",
-                        status_code=504,
-                        type_="server_error",
-                        code="wall_timeout",
-                    )
-                if isinstance(result, StreamingResponse):
-                    result.headers["X-OmniFusion-Run-Id"] = run_id
-                stream_owns_sem = _defer_slot_release_to_stream(result, sem)
-                return result
-
-            # Fix #13: Wrap run_fusion with wall_timeout from settings
+            # Fix #13: Wrap strategy execution with wall_timeout from settings.
             try:
                 result = await asyncio.wait_for(
                     run_fusion(run_id, preset, body, key_hash),
@@ -319,7 +311,11 @@ async def create_chat_completion(
             if body.model in settings.omnifusion_passthrough_whitelist:
                 extra = None
                 if body.tools:
-                    extra = {"tools": body.tools, "tool_choice": body.tool_choice}
+                    body_dict = body.model_dump(exclude_none=True)
+                    extra = {
+                        "tools": body_dict.get("tools"),
+                        "tool_choice": body_dict.get("tool_choice"),
+                    }
                 result, stream_owns_sem = await _single_model_completion(
                     run_id,
                     body.model,

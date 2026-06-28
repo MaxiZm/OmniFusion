@@ -1,0 +1,29 @@
+{
+  "claims": [],
+  "status": "not_run",
+  "summary": "Template only. No provider baseline has been measured.",
+  "required_provenance": {
+    "aider_chat_version": null,
+    "commit_sha": null,
+    "config": "evals/coding/aider_config.json",
+    "model": null,
+    "provider": null,
+    "date": null,
+    "pricing": null,
+    "raw_run_artifact": null,
+    "task_suite_checksum": null
+  },
+  "comparison": {
+    "fusion_general": {
+      "pass_rate": null,
+      "solve_per_usd": null,
+      "solve_per_wall_s": null
+    },
+    "best_single_configured_model": {
+      "model": null,
+      "pass_rate": null,
+      "solve_per_usd": null,
+      "solve_per_wall_s": null
+    }
+  }
+}

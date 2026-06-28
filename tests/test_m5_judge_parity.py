@@ -1,0 +1,199 @@
+import json
+
+import pytest
+
+from omnifusion.fusion.types import PanelResult, Preset, PresetStage
+
+
+def preset():
+    stage = PresetStage(max_tokens=64, timeout=5)
+    return Preset(
+        name="judge-parity",
+        strategy="B",
+        panel_models=["panel-a"],
+        panel=stage,
+        judge_model="judge-a",
+        judge=stage,
+        final_model="final-a",
+        final=stage,
+    )
+
+
+def test_judge_prompt_requests_openrouter_parity_fields():
+    from omnifusion.fusion.prompts import render_judge_prompt
+
+    prompt = render_judge_prompt("question", {"MODEL_A": "answer"})
+
+    for field in [
+        "contradictions",
+        "partial_coverage",
+        "unique_insights",
+        "blind_spots",
+        "model_strengths",
+        "synthesis_plan",
+    ]:
+        assert field in prompt
+
+
+@pytest.mark.asyncio
+async def test_run_judge_parses_extended_structured_fields(monkeypatch):
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+
+    class FakeMessage:
+        content = json.dumps(
+            {
+                "consensus": "shared",
+                "contradictions": "conflict",
+                "partial_coverage": "partial",
+                "unique_insights": {"MODEL_A": ["novel"]},
+                "blind_spots": "missing edge",
+                "model_strengths": {"MODEL_A": "fast"},
+                "synthesis_plan": "merge carefully",
+            }
+        )
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeResponse:
+        choices = [FakeChoice()]
+        usage = None
+        _omnifusion_cost_usd = 0.01
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+
+    analysis = await judge_mod.run_judge(
+        "run-judge",
+        preset(),
+        [{"role": "user", "content": "question"}],
+        [PanelResult(model="panel-a", status="ok", content="answer")],
+    )
+
+    assert captured["temperature"] == 0
+    assert analysis.consensus == "shared"
+    assert analysis.contradictions == "conflict"
+    assert analysis.partial_coverage == "partial"
+    assert analysis.unique_insights == {"MODEL_A": ["novel"]}
+    assert analysis.blind_spots == "missing edge"
+    assert analysis.model_strengths == {"MODEL_A": "fast"}
+    assert analysis.synthesis_plan == "merge carefully"
+
+
+@pytest.mark.asyncio
+async def test_run_judge_forces_temperature_zero_ignoring_caller(monkeypatch):
+    """The default judge determinism policy forces temp 0 even if a caller would
+    prefer otherwise — the knob below is the only documented escape hatch."""
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+
+    class FakeResponse:
+        class _C:
+            class message:  # noqa: N801 - mimic litellm shape
+                content = "{}"
+
+        choices = [_C()]
+        usage = None
+        _omnifusion_cost_usd = 0.0
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+    monkeypatch.setattr(
+        judge_mod.settings, "omnifusion_experimental_judge_temperature", None
+    )
+
+    await judge_mod.run_judge(
+        "run-judge-default",
+        preset(),
+        [{"role": "user", "content": "q"}],
+        [PanelResult(model="panel-a", status="ok", content="a")],
+    )
+    assert captured["temperature"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_judge_honors_experimental_temperature_override(monkeypatch):
+    """The documented, off-by-default experimental knob overrides the temp-0 policy."""
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+
+    class FakeResponse:
+        class _C:
+            class message:  # noqa: N801 - mimic litellm shape
+                content = "{}"
+
+        choices = [_C()]
+        usage = None
+        _omnifusion_cost_usd = 0.0
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+    monkeypatch.setattr(
+        judge_mod.settings, "omnifusion_experimental_judge_temperature", 0.7
+    )
+
+    await judge_mod.run_judge(
+        "run-judge-override",
+        preset(),
+        [{"role": "user", "content": "q"}],
+        [PanelResult(model="panel-a", status="ok", content="a")],
+    )
+    assert captured["temperature"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_run_judge_disables_openrouter_reasoning_for_json_judge(monkeypatch):
+    """OpenRouter reasoning models can spend the whole judge budget in hidden
+    reasoning and return content=None. The judge must request ordinary content
+    so the JSON parser has something to parse."""
+    import omnifusion.fusion.judge as judge_mod
+
+    captured = {}
+    stage = PresetStage(max_tokens=64, timeout=5)
+    openrouter_preset = Preset(
+        name="judge-openrouter-reasoning",
+        strategy="B",
+        panel_models=["panel-a"],
+        panel=stage,
+        judge_model="openrouter/deepseek/deepseek-v4-pro",
+        judge=stage,
+        final_model="final-a",
+        final=stage,
+    )
+
+    class FakeResponse:
+        class _C:
+            class message:  # noqa: N801 - mimic litellm shape
+                content = '{"consensus": "ok"}'
+
+        choices = [_C()]
+        usage = None
+        _omnifusion_cost_usd = 0.0
+
+    async def fake_call(self, stage, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(judge_mod.BudgetedExecutor, "call", fake_call)
+
+    await judge_mod.run_judge(
+        "run-judge-openrouter-reasoning",
+        openrouter_preset,
+        [{"role": "user", "content": "q"}],
+        [PanelResult(model="panel-a", status="ok", content="a")],
+    )
+
+    assert captured["reasoning"] == {"effort": "none", "exclude": True}

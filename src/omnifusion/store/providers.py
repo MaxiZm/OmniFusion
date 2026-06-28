@@ -227,3 +227,24 @@ async def resolve_provider_for_model(model_name: str) -> Optional[dict]:
         return default_prov
 
     return None
+
+
+async def resolve_registered_provider_for_model(model_name: str) -> Optional[dict]:
+    """Resolve only explicitly registered providers.
+
+    Unlike resolve_provider_for_model(), this does not fall back to the default
+    provider for arbitrary model names. It is used for request-level plugin
+    overrides where OpenRouter compatibility requires unregistered models to be a
+    400 instead of implicit provider creation.
+    """
+    providers = await list_providers()
+
+    for p in providers:
+        if model_name in p.get("models", []):
+            return await get_provider(p["id"])
+
+    if "/" in model_name:
+        provider_id = model_name.split("/", 1)[0]
+        return await get_provider(provider_id)
+
+    return None

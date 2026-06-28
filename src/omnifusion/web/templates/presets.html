@@ -112,6 +112,26 @@
                     </tbody>
                 </table>
             </div>
+            {% if invalid_presets %}
+            <div class="alert alert-danger" style="margin: var(--sp-4);">
+                <strong>{{ invalid_presets|length }} preset{{ '' if invalid_presets|length == 1 else 's' }} could not be loaded.</strong>
+                These were saved with values that exceed the current limits (e.g. max tokens, stage timeout, or cost ceiling). They are excluded from listings and the playground. Re-create them with the form, or delete them below.
+                <div class="invalid-presets" style="margin-top: var(--sp-3); display: grid; gap: var(--sp-2);">
+                    {% for ip in invalid_presets %}
+                    <div style="display: flex; align-items: center; gap: var(--sp-3); justify-content: space-between;">
+                        <div style="min-width: 0;">
+                            <span class="cell-mono cell-primary">fusion/{{ ip.name }}</span>
+                            <span class="cell-muted cell-clip" style="display: block;">{{ ip.error }}</span>
+                        </div>
+                        <form action="/admin/presets/{{ ip.name }}/delete" method="POST" onsubmit="return confirm('Delete preset “{{ ip.name }}”? This cannot be undone.');" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -130,14 +150,45 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="display_name">Display name <span class="text-secondary">optional</span></label>
+                    <input type="text" name="display_name" id="display_name" class="form-control" placeholder="General Council">
+                </div>
+
+                <div class="form-group">
                     <label for="strategy">Fusion strategy</label>
                     <select name="strategy" id="strategy" class="form-control" required>
                         <option value="B">Strategy B — Judge plan &amp; synthesis</option>
-                        <option value="A" disabled>Strategy A — Consensus / average (stubbed)</option>
-                        <option value="C" disabled>Strategy C — Iterative review (stubbed)</option>
+                        <option value="conductor">Conductor — experimental, off-default approximation</option>
                     </select>
-                    <small class="form-hint">Strategy B is fully implemented.</small>
+                    <small class="form-hint">Strategy B is the default; conductor is experimental and ablation-gated.</small>
                 </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="web_enabled" id="web_enabled" value="true">
+                        Enable server-side web grounding ("web on")
+                    </label>
+                </div>
+
+                <fieldset class="stage-fieldset">
+                    <legend>Role prompts <span class="text-secondary">optional</span></legend>
+                    <div class="form-group">
+                        <label for="prompt_global">Global prompt</label>
+                        <textarea name="prompt_global" id="prompt_global" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt_panel">Panel prompt</label>
+                        <textarea name="prompt_panel" id="prompt_panel" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt_judge">Judge prompt</label>
+                        <textarea name="prompt_judge" id="prompt_judge" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt_final">Final prompt</label>
+                        <textarea name="prompt_final" id="prompt_final" class="form-control" rows="2"></textarea>
+                    </div>
+                </fieldset>
 
                 <fieldset class="stage-fieldset">
                     <legend><span class="num">1</span> Panel</legend>
@@ -157,11 +208,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="panel_max_tokens">Max tokens</label>
-                            <input type="number" name="panel_max_tokens" id="panel_max_tokens" class="form-control tnum" value="1024" required>
+                            <input type="number" name="panel_max_tokens" id="panel_max_tokens" class="form-control tnum" value="1024" min="1" max="{{ max_tokens_limit }}" required>
                         </div>
                         <div class="form-group">
                             <label for="panel_timeout">Timeout (s)</label>
-                            <input type="number" name="panel_timeout" id="panel_timeout" class="form-control tnum" value="30" required>
+                            <input type="number" name="panel_timeout" id="panel_timeout" class="form-control tnum" value="30" min="1" max="{{ max_stage_timeout }}" required>
                         </div>
                     </div>
                 </fieldset>
@@ -179,11 +230,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="judge_max_tokens">Max tokens</label>
-                            <input type="number" name="judge_max_tokens" id="judge_max_tokens" class="form-control tnum" value="512" required>
+                            <input type="number" name="judge_max_tokens" id="judge_max_tokens" class="form-control tnum" value="512" min="1" max="{{ max_tokens_limit }}" required>
                         </div>
                         <div class="form-group">
                             <label for="judge_timeout">Timeout (s)</label>
-                            <input type="number" name="judge_timeout" id="judge_timeout" class="form-control tnum" value="30" required>
+                            <input type="number" name="judge_timeout" id="judge_timeout" class="form-control tnum" value="30" min="1" max="{{ max_stage_timeout }}" required>
                         </div>
                     </div>
                 </fieldset>
@@ -201,18 +252,18 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="final_max_tokens">Max tokens</label>
-                            <input type="number" name="final_max_tokens" id="final_max_tokens" class="form-control tnum" value="2048" required>
+                            <input type="number" name="final_max_tokens" id="final_max_tokens" class="form-control tnum" value="2048" min="1" max="{{ max_tokens_limit }}" required>
                         </div>
                         <div class="form-group">
                             <label for="final_timeout">Timeout (s)</label>
-                            <input type="number" name="final_timeout" id="final_timeout" class="form-control tnum" value="60" required>
+                            <input type="number" name="final_timeout" id="final_timeout" class="form-control tnum" value="60" min="1" max="{{ max_stage_timeout }}" required>
                         </div>
                     </div>
                 </fieldset>
 
                 <div class="form-group">
                     <label for="cost_ceiling">Cost ceiling <span class="text-secondary">· usd / request</span></label>
-                    <input type="number" step="0.01" name="cost_ceiling" id="cost_ceiling" class="form-control tnum" value="0.50" required>
+                    <input type="number" step="0.01" name="cost_ceiling" id="cost_ceiling" class="form-control tnum" value="0.50" min="0.01" max="{{ max_cost_ceiling }}" required>
                     <small class="form-hint">Enforced atomically in the SQLite ledger.</small>
                 </div>
 

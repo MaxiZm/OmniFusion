@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends
 from .auth import verify_api_key
+from .model_names import model_alias_entries
+from .errors import OmniFusionError
 from ..store.presets import list_presets
 from ..settings import settings
 import time
@@ -7,31 +9,45 @@ import time
 router = APIRouter()
 
 
+def preset_model_entry(preset, created: int) -> dict:
+    return {
+        "id": f"fusion/{preset.name}",
+        "object": "model",
+        "created": created,
+        "owned_by": "omnifusion",
+    }
+
+
+async def all_model_entries(created: int) -> list[dict]:
+    presets = await list_presets()
+    data = [preset_model_entry(preset, created) for preset in presets]
+    data.extend(model_alias_entries(created))
+    for model in settings.omnifusion_passthrough_whitelist:
+        data.append(
+            {
+                "id": model,
+                "object": "model",
+                "created": created,
+                "owned_by": "omnifusion",
+            }
+        )
+    return data
+
+
 @router.get("/models")
 async def list_models(key_hash: str = Depends(verify_api_key)):
-    presets = await list_presets()
-    data = []
+    now = int(time.time())
+    return {"object": "list", "data": await all_model_entries(now)}
 
-    # 1. Add all presets
-    for p in presets:
-        data.append(
-            {
-                "id": f"fusion/{p.name}",
-                "object": "model",
-                "created": int(time.time()),
-                "owned_by": "omnifusion",
-            }
-        )
 
-    # 2. Add all whitelisted passthrough models
-    for m in settings.omnifusion_passthrough_whitelist:
-        data.append(
-            {
-                "id": m,
-                "object": "model",
-                "created": int(time.time()),
-                "owned_by": "omnifusion",
-            }
-        )
-
-    return {"object": "list", "data": data}
+@router.get("/models/{model_id:path}")
+async def retrieve_model(model_id: str, key_hash: str = Depends(verify_api_key)):
+    now = int(time.time())
+    for entry in await all_model_entries(now):
+        if entry["id"] == model_id:
+            return entry
+    raise OmniFusionError(
+        f"Model {model_id} not found",
+        status_code=404,
+        code="model_not_found",
+    )

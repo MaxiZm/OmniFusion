@@ -1,0 +1,366 @@
+{
+  "clients": [
+    "openai-python",
+    "openai-node",
+    "aider",
+    "opencode",
+    "continue",
+    "cursor-openai-compat"
+  ],
+  "coverage_type_legend": {
+    "manual": "Reproducible-manual checklist; not a CI gate (e.g. headless automation is unreliable).",
+    "sdk": "Exercised by the actual pinned client SDK against the app.",
+    "unsupported": "Documented as unsupported for this client.",
+    "wire_contract": "Verified by HTTP-contract tests of the OpenAI wire protocol the client speaks (the client binary/SDK itself is not driven in CI)."
+  },
+  "matrix": {
+    "aider": {
+      "chat": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m1b.py",
+          "tests/test_m2_aliases.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "coverage_type": "unsupported",
+        "covered_by": [],
+        "reason": "Aider does not require a separate tool-stream cell in this M2 matrix.",
+        "status": "unsupported"
+      },
+      "tools": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "continue": {
+      "chat": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_contract.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "cursor-openai-compat": {
+      "chat": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "errors": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "models": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "stream": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "stream_usage": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "tool_stream": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      },
+      "tools": {
+        "coverage_type": "manual",
+        "covered_by": [],
+        "reason": "Cursor OpenAI-compatible mode is reproducible-manual because headless Cursor automation is unreliable.",
+        "status": "manual"
+      }
+    },
+    "openai-node": {
+      "chat": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_contract.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "openai-python": {
+      "chat": {
+        "coverage_type": "sdk",
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_contract.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "coverage_type": "sdk",
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "coverage_type": "sdk",
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "coverage_type": "sdk",
+        "covered_by": [
+          "tests/test_client_openai_python.py",
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    },
+    "opencode": {
+      "chat": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_contract.py",
+          "tests/test_m8_opencode_loop.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "errors": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_errors.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "models": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_m2_routes_models.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_streaming.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "stream_usage": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_stream_usage.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tool_stream": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      },
+      "tools": {
+        "coverage_type": "wire_contract",
+        "covered_by": [
+          "tests/test_tool_fusion.py",
+          "tests/test_m8_opencode_loop.py"
+        ],
+        "reason": "",
+        "status": "covered"
+      }
+    }
+  },
+  "pins": {
+    "aider": "aider-chat==0.86.2",
+    "continue": "Continue VS Code extension 2.1.0, OpenAI-compatible provider mode",
+    "cursor-openai-compat": "manual OpenAI-compatible provider mode",
+    "openai-node": "openai@6.45.0",
+    "openai-python": "openai==2.42.0",
+    "opencode": "opencode-ai@1.17.11"
+  },
+  "scope": "M2-M8 Tier A HTTP contract matrix. Covered cells reference deterministic tests in this repository; Cursor remains reproducible-manual."
+}

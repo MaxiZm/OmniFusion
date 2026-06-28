@@ -1,0 +1,33 @@
+{
+  "tier": "B-replay",
+  "name": "streaming_synthesis_cost",
+  "recorded_at": "2026-06-26",
+  "provider": "fixture",
+  "model": "m1a-replay-priced-model",
+  "pricing": {
+    "input_per_mtok": 1.0,
+    "output_per_mtok": 2.0
+  },
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "Replay the streaming synthesis budget path."
+      }
+    ],
+    "max_tokens": 32
+  },
+  "panel": {
+    "model": "m1a-replay-priced-model",
+    "content": "Panel fixture answer."
+  },
+  "judge": {
+    "consensus": "Fixture consensus.",
+    "recommended_final_answer_plan": "Synthesize the replay answer."
+  },
+  "stream_chunks": [
+    "Replay ",
+    "stream ",
+    "answer."
+  ]
+}

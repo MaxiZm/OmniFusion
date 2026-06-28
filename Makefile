@@ -1,4 +1,10 @@
-.PHONY: dev test test-int lint fmt compose-up compose-down purge export import
+.PHONY: dev test test-int lint fmt install-smoke security-audit compose-up compose-down purge export import eval-coding-smoke eval-coding-full eval-tool-smoke eval-ablation-validate
+
+EVAL_CODING_FLAGS :=
+ifeq ($(EVAL_MOCK),1)
+EVAL_CODING_FLAGS += --mock
+endif
+ABLATION_ARTIFACT :=
 
 dev:
 	uv run uvicorn src.omnifusion.main:app --reload
@@ -15,6 +21,13 @@ lint:
 fmt:
 	uv run ruff format .
 
+install-smoke:
+	uv build
+	uv run omnifusion genkey >/dev/null
+
+security-audit:
+	uvx --from pip-audit pip-audit --strict --progress-spinner off
+
 compose-up:
 	docker compose -f deploy/docker-compose.yml up -d
 
@@ -30,3 +43,27 @@ export:
 import:
 	uv run python -m src.omnifusion.cli import
 
+eval-coding-smoke:
+	uv run python -m omnifusion.evals.coding smoke \
+		--config evals/coding/aider_config.json \
+		--tasks evals/coding/smoke_tasks.json \
+		--output evals/coding/runs/smoke-latest.json \
+		$(EVAL_CODING_FLAGS)
+
+eval-coding-full:
+	uv run python -m omnifusion.evals.coding full \
+		--config evals/coding/aider_config.json \
+		--tasks evals/coding/full_tasks.json \
+		--output evals/coding/runs/full-latest.json \
+		$(EVAL_CODING_FLAGS)
+
+eval-tool-smoke:
+	uv run python -m omnifusion.evals.tools \
+		--config evals/coding/aider_config.json \
+		--tasks evals/coding/tool_tasks.json \
+		--output evals/coding/runs/tool-smoke-latest.json \
+		$(EVAL_CODING_FLAGS)
+
+eval-ablation-validate:
+	@test -n "$(ABLATION_ARTIFACT)" || (echo "Set ABLATION_ARTIFACT=path/to/artifact.json" && exit 2)
+	uv run python -m omnifusion.evals.ablations $(ABLATION_ARTIFACT)

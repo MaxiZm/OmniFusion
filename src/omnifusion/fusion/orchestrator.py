@@ -1,61 +1,55 @@
 import time
-import json
-import uuid
 import logging
 from fastapi.responses import StreamingResponse
-from .types import Preset, FusionTrace
+from .types import Preset, FusionTrace, trace_metadata_for_preset
 from .panel import run_panel
 from .judge import run_judge
 from .synth import run_synthesis
 from ..api.schemas import ChatCompletionRequest
-from ..api.sse import wants_usage, usage_chunk_sse
+from ..api.normalize import generation_passthrough_kwargs
+from ..api.sse import wants_usage
 from ..budget.ledger import initialize_request_budget
 from ..store.runs import save_trace
+from .runtime.response import ResponseShaper
+from .runtime.streaming import StreamingAdapter, normalize_finish_reason
 
 logger = logging.getLogger("omnifusion.orchestrator")
 
 
 def _read_usage(usage) -> tuple:
-    """Extract (prompt_tokens, completion_tokens) from a usage object or dict, defaulting to 0."""
-    if usage is None:
-        return 0, 0
-    if isinstance(usage, dict):
-        return int(usage.get("prompt_tokens", 0) or 0), int(usage.get("completion_tokens", 0) or 0)
-    return (
-        int(getattr(usage, "prompt_tokens", 0) or 0),
-        int(getattr(usage, "completion_tokens", 0) or 0),
+    """Thin alias for the canonical usage reader on the shaper."""
+    return ResponseShaper.read_usage(usage)
+
+
+def _final_result_cost(final_result) -> float:
+    return float(
+        getattr(
+            final_result,
+            "_omnifusion_cost_usd",
+            getattr(final_result, "cost_usd", 0.0),
+        )
+        or 0.0
     )
 
 
-def _compute_usage(preset, panel_results, judge_analysis, final_result) -> dict:
-    """Build the response `usage` block.
-
-    Defaults to aggregating tokens across panel + judge + final stages, matching
-    what the request actually cost. If preset.usage_reporting == "final", only the
-    final synthesis call's usage is reported.
-    """
-    final_prompt, final_completion = _read_usage(getattr(final_result, "usage", None))
-
-    if getattr(preset, "usage_reporting", "aggregate") == "final":
-        prompt_tokens, completion_tokens = final_prompt, final_completion
-    else:
-        prompt_tokens, completion_tokens = final_prompt, final_completion
-        for r in panel_results:
-            p, c = _read_usage(r.usage)
-            prompt_tokens += p
-            completion_tokens += c
-        if judge_analysis is not None:
-            prompt_tokens += int(getattr(judge_analysis, "prompt_tokens", 0) or 0)
-            completion_tokens += int(getattr(judge_analysis, "completion_tokens", 0) or 0)
-
-    return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
-    }
+def _trace_metadata(preset, web_sources) -> dict:
+    """Preset trace metadata, plus bounded web-source attribution when web grounding
+    ran (Invariant 6: URL/title/hash/excerpt only — never the full page)."""
+    metadata = trace_metadata_for_preset(preset)
+    if web_sources:
+        metadata["web_sources"] = web_sources
+    return metadata
 
 
 async def run_fusion(
+    run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
+):
+    from .runtime.registry import execute_strategy
+
+    return await execute_strategy(run_id, preset, request, key_hash)
+
+
+async def run_fusion_classic(
     run_id: str, preset: Preset, request: ChatCompletionRequest, key_hash: str
 ):
     start_time = time.time()
@@ -71,16 +65,34 @@ async def run_fusion(
     panel_results = []
     judge_analysis = None
     degraded = False
+    web_sources = []
 
     try:
-        # 2. Run Panel
+        # 1b. Server-side web grounding ("web on"). Opt-in per preset / plugins.web.
+        # Untrusted, fenced, attributed; each web call is its own budget stage.
+        panel_messages = request.messages
+        if getattr(preset, "web_enabled", False):
+            from .web_grounding import gather_web_context, inject_grounding, latest_user_text
+
+            web_context = await gather_web_context(
+                run_id, latest_user_text(request.messages)
+            )
+            web_sources = web_context.sources
+            if web_context.has_grounding:
+                panel_messages = inject_grounding(
+                    request.messages, web_context.grounding_text
+                )
+
+        # 2. Run Panel (on the web-grounded messages when enabled). Forward caller
+        # generation params (seed/penalties/service_tier) so they take effect.
         panel_results = await run_panel(
             run_id,
             preset,
-            request.messages,
+            panel_messages,
             min_success=preset.min_panel_success
             if hasattr(preset, "min_panel_success")
             else 1,
+            extra_kwargs=generation_passthrough_kwargs(request),
         )
 
         # 3. Run Judge
@@ -99,10 +111,9 @@ async def run_fusion(
             degraded = True
 
         # 4. Synthesis
-        context = {}
         try:
             final_result = await run_synthesis(
-                run_id, preset, request, panel_results, judge_analysis, context
+                run_id, preset, request, panel_results, judge_analysis, {}
             )
         except Exception as e:
             on_fail = getattr(preset, "on_final_failure", "error")
@@ -113,29 +124,16 @@ async def run_fusion(
                     best_panel = max(ok_panels, key=lambda x: len(x.content or ""))
                     degraded = True
 
-                    final_response_dict = {
-                        "id": f"chatcmpl-{uuid.uuid4()}",
-                        "object": "chat.completion",
-                        "created": int(time.time()),
-                        "model": request.model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": best_panel.content,
-                                },
-                                # OpenAI finish_reason is a closed enum; "fallback" breaks
-                                # strict clients. The degraded nature is recorded in the trace.
-                                "finish_reason": "stop",
-                            }
-                        ],
-                        "usage": {
+                    final_response_dict = ResponseShaper.chat_completion(
+                        model=request.model,
+                        content=best_panel.content,
+                        usage={
                             "prompt_tokens": 0,
                             "completion_tokens": 0,
                             "total_tokens": 0,
                         },
-                    }
+                        finish_reason="stop",
+                    )
 
                     wall_ms = int((time.time() - start_time) * 1000)
                     panel_cost = sum(r.cost_usd for r in panel_results)
@@ -150,6 +148,7 @@ async def run_fusion(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=best_panel.content,
+                        metadata=_trace_metadata(preset, web_sources),
                     )
                     await save_trace(trace, request.store, key_hash)
                     return final_response_dict
@@ -161,12 +160,7 @@ async def run_fusion(
             first_chunk = await final_result.__anext__()
 
             _fusion_model = f"fusion/{preset.name}"
-
-            def _chunk_sse(chunk) -> str:
-                """Serialize a chunk to SSE data, overriding model to fusion/<preset>."""
-                data = json.loads(chunk.model_dump_json())
-                data["model"] = _fusion_model
-                return json.dumps(data)
+            stream_adapter = StreamingAdapter(_fusion_model)
 
             async def stream_generator():
                 completion_text = ""
@@ -179,7 +173,7 @@ async def run_fusion(
                             completion_text += delta.content
                     if getattr(first_chunk, "usage", None):
                         synth_usage = first_chunk.usage
-                    yield f"data: {_chunk_sse(first_chunk)}\n\n"
+                    yield stream_adapter.chunk_sse(first_chunk)
 
                     async for chunk in final_result:
                         if chunk.choices and len(chunk.choices) > 0:
@@ -188,7 +182,7 @@ async def run_fusion(
                                 completion_text += delta.content
                         if getattr(chunk, "usage", None):
                             synth_usage = chunk.usage
-                        yield f"data: {_chunk_sse(chunk)}\n\n"
+                        yield stream_adapter.chunk_sse(chunk)
 
                     # Clean completion: optionally emit an aggregate usage chunk, then [DONE].
                     if wants_usage(request):
@@ -201,8 +195,8 @@ async def run_fusion(
                         if judge_analysis is not None:
                             agg_pt += int(getattr(judge_analysis, "prompt_tokens", 0) or 0)
                             agg_ct += int(getattr(judge_analysis, "completion_tokens", 0) or 0)
-                        yield usage_chunk_sse(_fusion_model, agg_pt, agg_ct)
-                    yield "data: [DONE]\n\n"
+                        yield stream_adapter.usage_sse(agg_pt, agg_ct)
+                    yield stream_adapter.done_sse()
 
                 except Exception as exc:
                     # Mid-stream failure (HTTP 200 already committed). Per the failure
@@ -218,7 +212,7 @@ async def run_fusion(
                     wall_ms = int((time.time() - start_time) * 1000)
                     panel_cost = sum(r.cost_usd for r in panel_results)
                     judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
-                    synth_cost = context.get("cost_usd", 0.0)
+                    synth_cost = _final_result_cost(final_result)
                     total_cost = panel_cost + judge_cost + synth_cost
                     trace = FusionTrace(
                         run_id=run_id,
@@ -229,6 +223,7 @@ async def run_fusion(
                         panel_results=panel_results,
                         judge_analysis=judge_analysis,
                         final_answer=completion_text,
+                        metadata=_trace_metadata(preset, web_sources),
                     )
                     await save_trace(trace, request.store, key_hash)
 
@@ -242,7 +237,7 @@ async def run_fusion(
             content = final_result.choices[0].message.content
             panel_cost = sum(r.cost_usd for r in panel_results)
             judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
-            synth_cost = context.get("cost_usd", 0.0)
+            synth_cost = _final_result_cost(final_result)
             total_cost = panel_cost + judge_cost + synth_cost
 
             wall_ms = int((time.time() - start_time) * 1000)
@@ -256,27 +251,24 @@ async def run_fusion(
                 panel_results=panel_results,
                 judge_analysis=judge_analysis,
                 final_answer=content,
+                metadata=_trace_metadata(preset, web_sources),
             )
             await save_trace(trace, request.store, key_hash)
 
             # Return an OpenAI-compatible response with fusion/<preset> as the model.
             # Usage aggregates panel + judge + final by default (preset.usage_reporting).
-            usage = _compute_usage(preset, panel_results, judge_analysis, final_result)
-            finish_reason = getattr(final_result.choices[0], "finish_reason", "stop")
-            return {
-                "id": f"chatcmpl-{uuid.uuid4()}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": f"fusion/{preset.name}",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": content},
-                        "finish_reason": finish_reason or "stop",
-                    }
-                ],
-                "usage": usage,
-            }
+            usage = ResponseShaper.aggregate_usage(
+                preset, panel_results, judge_analysis, final_result
+            )
+            finish_reason = normalize_finish_reason(
+                getattr(final_result.choices[0], "finish_reason", "stop")
+            )
+            return ResponseShaper.chat_completion(
+                model=f"fusion/{preset.name}",
+                content=content,
+                usage=usage,
+                finish_reason=finish_reason,
+            )
 
     except Exception as outer_err:
         wall_ms = int((time.time() - start_time) * 1000)
@@ -292,6 +284,7 @@ async def run_fusion(
             panel_results=panel_results,
             judge_analysis=judge_analysis,
             final_answer=None,
+            metadata=_trace_metadata(preset, web_sources),
         )
         await save_trace(trace, request.store, key_hash)
         raise outer_err

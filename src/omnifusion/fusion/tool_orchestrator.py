@@ -22,7 +22,6 @@ V4 pro/flash (tools work in both thinking and non-thinking modes) — do. A mode
 genuinely doesn't support tools errors on the call and is dropped from the panel.
 """
 import asyncio
-import json
 import time
 import uuid
 import logging
@@ -30,23 +29,39 @@ from typing import Optional
 
 from fastapi.responses import StreamingResponse
 
-from .types import Preset, PanelResult, JudgeAnalysis
-from ..llm.client import llm_client
-from ..budget.ledger import (
-    initialize_request_budget,
-    reserve_budget,
-    reconcile_budget,
-)
-from ..providers.pricing import calculate_actual_cost, estimate_call_cost, usd_to_micro
+from .types import Preset, PanelResult, JudgeAnalysis, trace_metadata_for_preset
+from ..budget.ledger import initialize_request_budget
 from ..api.errors import InsufficientPanelError
 from ..api.schemas import ChatCompletionRequest
-from ..api.sse import wants_usage, usage_chunk_sse
+from ..api.normalize import generation_passthrough_kwargs
+from ..api.sse import wants_usage
 from .judge import run_judge, extract_json_from_text
 from .synth import run_synthesis
+from .runtime.executor import BudgetedExecutor
+from .runtime.response import ResponseShaper
+from .runtime.streaming import StreamingAdapter
 from .types import FusionTrace
 from ..store.runs import save_trace
 
 logger = logging.getLogger("omnifusion.tool_orchestrator")
+
+
+def _final_result_cost(final_result) -> float:
+    return float(
+        getattr(
+            final_result,
+            "_omnifusion_cost_usd",
+            getattr(final_result, "cost_usd", 0.0),
+        )
+        or 0.0
+    )
+
+
+def _trace_metadata(preset, web_sources) -> dict:
+    metadata = trace_metadata_for_preset(preset)
+    if web_sources:
+        metadata["web_sources"] = web_sources
+    return metadata
 
 
 def _disable_thinking_kwargs(model: str) -> dict:
@@ -105,27 +120,29 @@ def _usage_tokens(usage) -> tuple:
     )
 
 
-async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
+async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice, gen_kwargs=None):
     """Each panel model proposes its next action (tool call or text), in parallel."""
 
+    executor = BudgetedExecutor(run_id)
+    gen_kwargs = gen_kwargs or {}
+
     async def one(model):
-        cost = estimate_call_cost(model, dict_messages, preset.panel.max_tokens)
-        reservation_id = await reserve_budget(
-            run_id, f"tool-panel/{model}", max(1, int(cost * 1_000_000))
-        )
-        actual = 0.0
+        # Reserve/reconcile is owned by the executor (M3a single-shield invariant):
+        # tool orchestration must not run a second model-call reconciliation path.
         try:
-            resp = await llm_client.acompletion(
-                provider_id="default",
+            resp = await executor.call(
+                f"tool-panel/{model}",
+                provider_id=preset.provider_id_for(model, "panel"),
                 model=model,
                 messages=dict_messages,
                 tools=tools,
                 tool_choice=tool_choice,
                 max_tokens=preset.panel.max_tokens,
                 timeout=preset.panel.timeout,
+                **gen_kwargs,
                 **_disable_thinking_kwargs(model),
             )
-            actual = calculate_actual_cost(resp, model)
+            actual = getattr(resp, "_omnifusion_cost_usd", 0.0)
             msg = resp.choices[0].message
             pt, ct = _usage_tokens(getattr(resp, "usage", None))
             return {
@@ -140,8 +157,6 @@ async def _panel_propose(run_id, preset, dict_messages, tools, tool_choice):
         except Exception as e:
             logger.warning(f"tool-panel {model} failed to propose: {e}")
             return {"model": model, "ok": False, "error": str(e), "cost": 0.0}
-        finally:
-            await asyncio.shield(reconcile_budget(reservation_id, usd_to_micro(actual)))
 
     tasks = [one(m) for m in preset.panel_models[:8]]
     return await asyncio.gather(*tasks)
@@ -161,12 +176,13 @@ def _describe_proposal(i: int, p: dict) -> str:
 async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict:
     """Judge selects the single best next action across the panel's proposals.
 
-    Returns {"decision": "tool"|"final", "best_index": int}.
+    Returns {"decision", "best_index", "cost", "prompt_tokens", "completion_tokens"}
+    so the coordinating judge call's usage/cost is aggregated, not dropped.
     """
     # If nobody proposed a tool call, the step is necessarily a final answer.
     any_tool = any(p.get("tool_calls") for p in ok_proposals)
     if not any_tool:
-        return {"decision": "final", "best_index": 0}
+        return {"decision": "final", "best_index": 0, "cost": 0.0, "prompt_tokens": 0, "completion_tokens": 0}
 
     descriptions = "\n".join(
         _describe_proposal(i, p) for i, p in enumerate(ok_proposals)
@@ -195,38 +211,47 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
     )
 
     messages = [{"role": "user", "content": judge_prompt}]
-    cost = estimate_call_cost(preset.judge_model, messages, preset.judge.max_tokens)
-    reservation_id = await reserve_budget(
-        run_id, "tool-judge", max(1, int(cost * 1_000_000))
-    )
-    actual = 0.0
+    executor = BudgetedExecutor(run_id)
+    judge_provider = preset.provider_id_for(preset.judge_model, "judge")
+    cost = 0.0
+    judge_pt = 0
+    judge_ct = 0
     try:
         # Request JSON mode; if a model rejects it, retry without (the extractor is
         # robust either way). filter_params drops it for providers that don't support it.
+        # Reserve/reconcile is owned by the executor (M3a single-shield invariant).
         kwargs = {
             "timeout": preset.judge.timeout,
-            "max_tokens": preset.judge.max_tokens,
             "response_format": {"type": "json_object"},
             **_disable_thinking_kwargs(preset.judge_model),
         }
         try:
-            resp = await llm_client.acompletion(
-                provider_id="default", model=preset.judge_model, messages=messages, **kwargs
+            resp = await executor.call(
+                "tool-judge",
+                provider_id=judge_provider,
+                model=preset.judge_model,
+                messages=messages,
+                max_tokens=preset.judge.max_tokens,
+                **kwargs,
             )
         except Exception:
             kwargs.pop("response_format", None)
-            resp = await llm_client.acompletion(
-                provider_id="default", model=preset.judge_model, messages=messages, **kwargs
+            resp = await executor.call(
+                "tool-judge",
+                provider_id=judge_provider,
+                model=preset.judge_model,
+                messages=messages,
+                max_tokens=preset.judge.max_tokens,
+                **kwargs,
             )
-        actual = calculate_actual_cost(resp, preset.judge_model)
+        cost = getattr(resp, "_omnifusion_cost_usd", 0.0)
+        judge_pt, judge_ct = _usage_tokens(getattr(resp, "usage", None))
         data = extract_json_from_text(resp.choices[0].message.content)
         decision = data.get("decision", "tool")
         best_index = int(data.get("best_index", 0))
     except Exception as e:
         logger.warning(f"tool-judge failed, defaulting to first tool proposal: {e}")
         decision, best_index = "tool", 0
-    finally:
-        await asyncio.shield(reconcile_budget(reservation_id, usd_to_micro(actual)))
 
     # Validate index and that the chosen proposal actually has a tool call.
     if best_index < 0 or best_index >= len(ok_proposals):
@@ -239,68 +264,17 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
                 break
         else:
             decision = "final"
-    return {"decision": decision, "best_index": best_index}
+    return {
+        "decision": decision,
+        "best_index": best_index,
+        "cost": cost,
+        "prompt_tokens": judge_pt,
+        "completion_tokens": judge_ct,
+    }
 
 
 def _usage_block(prompt_tokens: int, completion_tokens: int) -> dict:
-    return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
-    }
-
-
-def _tool_call_response_dict(preset, tool_calls, usage) -> dict:
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": f"fusion/{preset.name}",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": tool_calls,
-                },
-                "finish_reason": "tool_calls",
-            }
-        ],
-        "usage": usage,
-    }
-
-
-def _tool_call_sse(preset, tool_calls):
-    cid = f"chatcmpl-{uuid.uuid4()}"
-    created = int(time.time())
-    model = f"fusion/{preset.name}"
-
-    def chunk(delta, finish=None):
-        return {
-            "id": cid,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-        }
-
-    yield f"data: {json.dumps(chunk({'role': 'assistant', 'content': None}))}\n\n"
-    delta_tcs = [
-        {
-            "index": i,
-            "id": tc["id"],
-            "type": "function",
-            "function": {
-                "name": tc["function"]["name"],
-                "arguments": tc["function"]["arguments"],
-            },
-        }
-        for i, tc in enumerate(tool_calls)
-    ]
-    yield f"data: {json.dumps(chunk({'tool_calls': delta_tcs}))}\n\n"
-    yield f"data: {json.dumps(chunk({}, finish='tool_calls'))}\n\n"
-    yield "data: [DONE]\n\n"
+    return ResponseShaper.usage_block(prompt_tokens, completion_tokens)
 
 
 async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequest, key_hash: str):
@@ -313,11 +287,24 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     await initialize_request_budget(run_id, ceiling_micro_usd)
 
     dict_messages = [m.model_dump(exclude_none=True) for m in body.messages]
-    tools = body.tools
-    tool_choice = body.tool_choice or "auto"
+    body_dict = body.model_dump(exclude_none=True)
+    tools = body_dict.get("tools")
+    tool_choice = body_dict.get("tool_choice", "auto")
+    web_sources = []
 
-    # 1. Panel proposes next actions (parallel).
-    proposals = await _panel_propose(run_id, preset, dict_messages, tools, tool_choice)
+    if getattr(preset, "web_enabled", False):
+        from .web_grounding import gather_web_context, inject_grounding, latest_user_text
+
+        web_context = await gather_web_context(run_id, latest_user_text(dict_messages))
+        web_sources = web_context.sources
+        if web_context.has_grounding:
+            dict_messages = inject_grounding(dict_messages, web_context.grounding_text)
+
+    # 1. Panel proposes next actions (parallel). Forward caller generation params.
+    gen_kwargs = generation_passthrough_kwargs(body, include_tool_params=True)
+    proposals = await _panel_propose(
+        run_id, preset, dict_messages, tools, tool_choice, gen_kwargs
+    )
     ok = [p for p in proposals if p.get("ok")]
     if not ok:
         raise InsufficientPanelError(
@@ -326,12 +313,14 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
 
     panel_cost = sum(p.get("cost", 0.0) for p in proposals)
 
-    # 2. Judge selects the best next action.
+    # 2. Judge selects the best next action. Its cost/tokens are aggregated below so
+    # the coordinating tool-judge call is not dropped from the trace/usage.
     decision = await _decide_next_step(run_id, preset, dict_messages, ok)
+    step_judge_cost = decision.get("cost", 0.0)
 
-    # Aggregate panel token usage so responses report real (non-zero) usage.
-    panel_pt = sum(p.get("prompt_tokens", 0) for p in proposals)
-    panel_ct = sum(p.get("completion_tokens", 0) for p in proposals)
+    # Aggregate panel + tool-judge token usage so responses report real usage.
+    panel_pt = sum(p.get("prompt_tokens", 0) for p in proposals) + decision.get("prompt_tokens", 0)
+    panel_ct = sum(p.get("completion_tokens", 0) for p in proposals) + decision.get("completion_tokens", 0)
 
     # 3a. Tool step: return the chosen tool call(s); client executes and loops back.
     if decision["decision"] == "tool":
@@ -358,7 +347,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         trace = FusionTrace(
             run_id=run_id,
             preset=preset.name,
-            cost_usd=panel_cost,
+            cost_usd=panel_cost + step_judge_cost,
             wall_ms=int((time.time() - start_time) * 1000),
             degraded=False,
             panel_results=panel_results,
@@ -366,15 +355,23 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                 consensus=f"Selected tool call from {chosen['model']}",
             ),
             final_answer=None,
+            metadata=_trace_metadata(preset, web_sources),
         )
         await save_trace(trace, body.store, key_hash)
 
+        adapter = StreamingAdapter(f"fusion/{preset.name}")
         if body.stream:
+            # Emit a terminal usage chunk when the client opted in (e.g. /v1/responses
+            # always does), so a tool-call turn still reports usage.
+            stream_usage = (panel_pt, panel_ct) if wants_usage(body) else None
             return StreamingResponse(
-                _tool_call_sse(preset, tool_calls), media_type="text/event-stream"
+                adapter.tool_call_sse(tool_calls, usage=stream_usage),
+                media_type="text/event-stream",
             )
-        return _tool_call_response_dict(
-            preset, tool_calls, _usage_block(panel_pt, panel_ct)
+        return ResponseShaper.tool_call_completion(
+            model=f"fusion/{preset.name}",
+            tool_calls=tool_calls,
+            usage=_usage_block(panel_pt, panel_ct),
         )
 
     # 3b. Final step: fuse the text proposals into the final answer via the classic
@@ -414,10 +411,12 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     tool_notes = []
     for m in body.messages:
         if m.role == "assistant" and m.tool_calls:
+            # body.messages tool_calls are typed ToolCall objects (M1c), not dicts;
+            # normalize through the shared helper so multi-turn tool context is not
+            # silently dropped from the synthesis prompt.
+            normalized = _normalize_tool_calls(m.tool_calls) or []
             names = ", ".join(
-                str((tc.get("function") or {}).get("name") or "?")
-                for tc in m.tool_calls
-                if isinstance(tc, dict)
+                str(tc["function"].get("name") or "?") for tc in normalized
             )
             if names:
                 tool_notes.append(f"- called tool(s): {names}")
@@ -436,9 +435,8 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         update={"messages": sanitized, "tools": None, "tool_choice": None}
     )
 
-    context = {}
     final_result = await run_synthesis(
-        run_id, preset, synth_body, panel_results, judge_analysis, context
+        run_id, preset, synth_body, panel_results, judge_analysis, {}
     )
 
     judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
@@ -446,11 +444,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     if body.stream:
         first_chunk = await final_result.__anext__()
         _fusion_model = f"fusion/{preset.name}"
-
-        def _sse(chunk):
-            data = json.loads(chunk.model_dump_json())
-            data["model"] = _fusion_model
-            return json.dumps(data)
+        adapter = StreamingAdapter(_fusion_model)
 
         async def gen():
             completion_text = ""
@@ -461,30 +455,31 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
                     completion_text += first_chunk.choices[0].delta.content
                 if getattr(first_chunk, "usage", None):
                     synth_usage = first_chunk.usage
-                yield f"data: {_sse(first_chunk)}\n\n"
+                yield adapter.chunk_sse(first_chunk)
                 async for ch in final_result:
                     if ch.choices and ch.choices[0].delta and ch.choices[0].delta.content:
                         completion_text += ch.choices[0].delta.content
                     if getattr(ch, "usage", None):
                         synth_usage = ch.usage
-                    yield f"data: {_sse(ch)}\n\n"
+                    yield adapter.chunk_sse(ch)
                 if wants_usage(body):
                     s_pt, s_ct = _usage_tokens(synth_usage)
                     jp = int(getattr(judge_analysis, "prompt_tokens", 0) or 0) if judge_analysis else 0
                     jc = int(getattr(judge_analysis, "completion_tokens", 0) or 0) if judge_analysis else 0
-                    yield usage_chunk_sse(_fusion_model, panel_pt + jp + s_pt, panel_ct + jc + s_ct)
-                yield "data: [DONE]\n\n"
+                    yield adapter.usage_sse(panel_pt + jp + s_pt, panel_ct + jc + s_ct)
+                yield adapter.done_sse()
             except Exception as exc:
                 err = exc
                 logger.error(f"tool-fusion final stream error {run_id}: {exc}", exc_info=True)
             finally:
-                synth_cost = context.get("cost_usd", 0.0)
+                synth_cost = _final_result_cost(final_result)
                 trace = FusionTrace(
                     run_id=run_id, preset=preset.name,
-                    cost_usd=panel_cost + judge_cost + synth_cost,
+                    cost_usd=panel_cost + step_judge_cost + judge_cost + synth_cost,
                     wall_ms=int((time.time() - start_time) * 1000),
                     degraded=err is not None, panel_results=panel_results,
                     judge_analysis=judge_analysis, final_answer=completion_text,
+                    metadata=_trace_metadata(preset, web_sources),
                 )
                 await save_trace(trace, body.store, key_hash)
             if err is not None:
@@ -493,13 +488,14 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
         return StreamingResponse(gen(), media_type="text/event-stream")
 
     content = final_result.choices[0].message.content
-    synth_cost = context.get("cost_usd", 0.0)
+    synth_cost = _final_result_cost(final_result)
     trace = FusionTrace(
         run_id=run_id, preset=preset.name,
-        cost_usd=panel_cost + judge_cost + synth_cost,
+        cost_usd=panel_cost + step_judge_cost + judge_cost + synth_cost,
         wall_ms=int((time.time() - start_time) * 1000),
         degraded=False, panel_results=panel_results,
         judge_analysis=judge_analysis, final_answer=content,
+        metadata=_trace_metadata(preset, web_sources),
     )
     await save_trace(trace, body.store, key_hash)
     # Aggregate usage across panel + judge + final synthesis (no longer hardcoded 0).
@@ -507,13 +503,9 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
     judge_ct = int(getattr(judge_analysis, "completion_tokens", 0) or 0) if judge_analysis else 0
     synth_pt, synth_ct = _usage_tokens(getattr(final_result, "usage", None))
     usage = _usage_block(panel_pt + judge_pt + synth_pt, panel_ct + judge_ct + synth_ct)
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": f"fusion/{preset.name}",
-        "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}
-        ],
-        "usage": usage,
-    }
+    return ResponseShaper.chat_completion(
+        model=f"fusion/{preset.name}",
+        content=content,
+        usage=usage,
+        finish_reason="stop",
+    )

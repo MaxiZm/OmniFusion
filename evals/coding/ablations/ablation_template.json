@@ -1,0 +1,45 @@
+{
+  "claims": [],
+  "ci_method": null,
+  "commit_sha": null,
+  "comparisons": {
+    "best_single": {
+      "cost_budget_equal": null,
+      "solve_per_usd_delta_ci95": null,
+      "solve_per_usd_delta_mean": null,
+      "solve_per_wall_s_delta_ci95": null,
+      "solve_per_wall_s_delta_mean": null
+    },
+    "judge_selected_best_of_n": {
+      "cost_budget_equal": null,
+      "solve_per_usd_delta_ci95": null,
+      "solve_per_usd_delta_mean": null,
+      "solve_per_wall_s_delta_ci95": null,
+      "solve_per_wall_s_delta_mean": null
+    }
+  },
+  "component": null,
+  "date": null,
+  "failure_modes": {
+    "<failure_mode_name>": {
+      "strategy": null,
+      "best_single": null,
+      "judge_selected_best_of_n": null
+    }
+  },
+  "model": null,
+  "pricing": null,
+  "provider": null,
+  "runs": [
+    {
+      "model": null,
+      "provider": null,
+      "solve_rate": null,
+      "solve_per_usd": null,
+      "solve_per_wall_s": null
+    }
+  ],
+  "status": "template_not_run",
+  "strategy": null,
+  "tier": null
+}

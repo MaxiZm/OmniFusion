@@ -3,7 +3,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
 from argon2 import PasswordHasher
+from html import escape
+from pydantic import ValidationError
 from typing import List
+from importlib import resources
+from pathlib import Path
 import secrets
 import time
 import uuid
@@ -18,13 +22,25 @@ from ..store.providers import (
     save_provider,
     delete_provider,
 )
-from ..store.presets import list_presets, save_preset, delete_preset
-from ..fusion.types import Preset, PresetStage
+from ..store.presets import (
+    list_presets,
+    list_presets_with_invalid,
+    save_preset,
+    delete_preset,
+)
+from ..fusion.types import Preset, PresetPrompts, PresetStage
+from ..fusion.runtime.registry import registry as strategy_registry
 from .jobs import job_registry, run_playground_job
 from .csrf import generate_csrf_token
 
 router = APIRouter()
-templates = Jinja2Templates(directory="src/omnifusion/web/templates")
+
+
+def template_directory() -> Path:
+    return Path(str(resources.files("omnifusion").joinpath("web", "templates")))
+
+
+templates = Jinja2Templates(directory=str(template_directory()))
 ph = PasswordHasher()
 logger = logging.getLogger("omnifusion.admin")
 
@@ -206,6 +222,12 @@ async def login(
     # Success: clear failed attempts
     await _clear_login_attempts(client_ip)
 
+    old_session_id = request.cookies.get("session_id")
+    if old_session_id:
+        async with get_db_connection() as db:
+            await db.execute("DELETE FROM sessions WHERE session_id=?", (old_session_id,))
+            await db.commit()
+
     # Create session
     session_id = secrets.token_hex(32)
     csrf_token = generate_csrf_token()
@@ -363,7 +385,7 @@ async def test_provider_route(provider_id: str, session=Depends(verify_admin_ses
 
 @router.get("/presets", response_class=HTMLResponse)
 async def presets_page(request: Request, session=Depends(verify_admin_session)):
-    presets = await list_presets()
+    presets, invalid_presets = await list_presets_with_invalid()
     providers = await list_providers()
 
     # Gather all models from providers
@@ -372,7 +394,17 @@ async def presets_page(request: Request, session=Depends(verify_admin_session)):
         all_models.extend(p.get("models", []))
 
     return render_template(
-        "presets.html", request, {"presets": presets, "all_models": all_models}, session
+        "presets.html",
+        request,
+        {
+            "presets": presets,
+            "invalid_presets": invalid_presets,
+            "all_models": all_models,
+            "max_tokens_limit": settings.omnifusion_max_tokens_limit,
+            "max_stage_timeout": settings.omnifusion_max_stage_timeout,
+            "max_cost_ceiling": settings.global_daily_budget_usd,
+        },
+        session,
     )
 
 
@@ -392,27 +424,54 @@ async def save_preset_route(
     cost_ceiling: float = Form(...),
     on_final_failure: str = Form("error"),
     min_panel_success: int = Form(1),
+    display_name: str = Form(""),
+    web_enabled: bool = Form(False),
+    prompt_global: str = Form(""),
+    prompt_panel: str = Form(""),
+    prompt_judge: str = Form(""),
+    prompt_final: str = Form(""),
     session=Depends(verify_admin_session),
 ):
-    if strategy not in ("B",):
+    public_strategies = [key for key in strategy_registry.keys() if not key.startswith("_")]
+    if strategy not in public_strategies:
+        available = ", ".join(public_strategies)
         return HTMLResponse(
-            "<div class='alert alert-danger'>Only Strategy B is currently implemented.</div>",
+            f"<div class='alert alert-danger'>Unknown strategy '{strategy}'. "
+            f"Available strategies: {available}.</div>",
             status_code=400,
         )
 
-    preset = Preset(
-        name=name,
-        strategy=strategy,
-        panel_models=panel_models_raw,
-        panel=PresetStage(max_tokens=panel_max_tokens, timeout=panel_timeout),
-        judge_model=judge_model,
-        judge=PresetStage(max_tokens=judge_max_tokens, timeout=judge_timeout),
-        final_model=final_model,
-        final=PresetStage(max_tokens=final_max_tokens, timeout=final_timeout),
-        cost_ceiling=cost_ceiling,
-        on_final_failure=on_final_failure,
-        min_panel_success=min_panel_success,
-    )
+    role_prompts = {
+        role: text
+        for role, text in (
+            ("panel", prompt_panel),
+            ("judge", prompt_judge),
+            ("final", prompt_final),
+        )
+        if text.strip()
+    }
+    try:
+        preset = Preset(
+            name=name,
+            display_name=display_name or name,
+            strategy=strategy,
+            web_enabled=web_enabled,
+            prompts=PresetPrompts(global_prompt=prompt_global, role_prompts=role_prompts),
+            panel_models=panel_models_raw,
+            panel=PresetStage(max_tokens=panel_max_tokens, timeout=panel_timeout),
+            judge_model=judge_model,
+            judge=PresetStage(max_tokens=judge_max_tokens, timeout=judge_timeout),
+            final_model=final_model,
+            final=PresetStage(max_tokens=final_max_tokens, timeout=final_timeout),
+            cost_ceiling=cost_ceiling,
+            on_final_failure=on_final_failure,
+            min_panel_success=min_panel_success,
+        )
+    except ValidationError as e:
+        return HTMLResponse(
+            f"<div class='alert alert-danger'>Invalid preset: {escape(str(e))}</div>",
+            status_code=400,
+        )
 
     await save_preset(preset)
     return RedirectResponse("/admin/presets", status_code=status.HTTP_303_SEE_OTHER)

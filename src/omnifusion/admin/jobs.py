@@ -273,7 +273,11 @@ async def run_playground_job(run_id: str, preset_name: str, prompt: str, key_has
 
         panel_cost = sum(r.cost_usd for r in panel_results)
         judge_cost = judge_analysis.cost_usd if judge_analysis else 0.0
-        synth_cost = context.get("cost_usd", 0.0)
+        # M3a removed context["cost_usd"]; the streamed synthesis exposes its
+        # reconciled cost on the BudgetedStream after consumption (mirrors
+        # orchestrator._final_result_cost), so read it from there instead of the
+        # now-never-written context dict.
+        synth_cost = getattr(final_stream, "cost_usd", 0.0)
         total_cost = panel_cost + judge_cost + synth_cost
         wall_ms = int((time.time() - job.created_at) * 1000)
         trace = FusionTrace(

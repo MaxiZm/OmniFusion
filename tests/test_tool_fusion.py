@@ -12,9 +12,9 @@ from omnifusion.fusion.tool_orchestrator import (
     _normalize_tool_calls,
     _describe_proposal,
     _decide_next_step,
-    _tool_call_response_dict,
-    _tool_call_sse,
 )
+from omnifusion.fusion.runtime.response import ResponseShaper
+from omnifusion.fusion.runtime.streaming import StreamingAdapter
 from omnifusion.fusion.types import Preset, PresetStage
 
 
@@ -80,18 +80,19 @@ async def test_decide_short_circuits_to_final_when_no_tool_proposals():
     )
     proposals = [{"content": "answer A", "tool_calls": None}, {"content": "answer B", "tool_calls": None}]
     decision = await _decide_next_step("run-x", preset, [{"role": "user", "content": "hi"}], proposals)
-    assert decision == {"decision": "final", "best_index": 0}
+    assert decision["decision"] == "final"
+    assert decision["best_index"] == 0
+    # No judge LLM call happened, so no cost/tokens are attributed.
+    assert decision["cost"] == 0.0
+    assert decision["prompt_tokens"] == 0
+    assert decision["completion_tokens"] == 0
 
 
 def test_tool_call_response_dict_shape():
-    preset = Preset(
-        name="draco", strategy="B", panel_models=["m"],
-        panel=PresetStage(max_tokens=10, timeout=10),
-        judge_model="m", judge=PresetStage(max_tokens=10, timeout=10),
-        final_model="m", final=PresetStage(max_tokens=10, timeout=10),
-    )
     tcs = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
-    d = _tool_call_response_dict(preset, tcs, 0.001)
+    d = ResponseShaper.tool_call_completion(
+        model="fusion/draco", tool_calls=tcs, usage={"prompt_tokens": 1}
+    )
     assert d["model"] == "fusion/draco"
     assert d["choices"][0]["finish_reason"] == "tool_calls"
     assert d["choices"][0]["message"]["tool_calls"] == tcs
@@ -99,14 +100,8 @@ def test_tool_call_response_dict_shape():
 
 
 def test_tool_call_sse_is_valid_openai_stream():
-    preset = Preset(
-        name="draco", strategy="B", panel_models=["m"],
-        panel=PresetStage(max_tokens=10, timeout=10),
-        judge_model="m", judge=PresetStage(max_tokens=10, timeout=10),
-        final_model="m", final=PresetStage(max_tokens=10, timeout=10),
-    )
     tcs = [{"id": "c1", "type": "function", "function": {"name": "get_weather", "arguments": '{"city":"Paris"}'}}]
-    events = list(_tool_call_sse(preset, tcs))
+    events = list(StreamingAdapter("fusion/draco").tool_call_sse(tcs))
     blob = "".join(events)
     assert "data: [DONE]" in blob
     # A chunk must carry the tool_call and a terminal finish_reason.
@@ -117,3 +112,25 @@ def test_tool_call_sse_is_valid_openai_stream():
         for p in payloads
     )
     assert any(p["choices"][0]["finish_reason"] == "tool_calls" for p in payloads)
+
+
+def test_tool_call_sse_emits_usage_chunk_when_requested():
+    """[P2] A streamed tool-call turn emits a terminal usage chunk when requested."""
+    tcs = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+    events = list(StreamingAdapter("fusion/x").tool_call_sse(tcs, usage=(11, 4)))
+    blob = "".join(events)
+    payloads = [json.loads(e[len("data: "):]) for e in events if e.startswith("data: {")]
+    usage_payloads = [p for p in payloads if p.get("usage")]
+    assert usage_payloads, "no usage chunk emitted"
+    assert usage_payloads[-1]["usage"] == {
+        "prompt_tokens": 11,
+        "completion_tokens": 4,
+        "total_tokens": 15,
+    }
+    assert blob.rstrip().endswith("data: [DONE]")
+
+
+def test_tool_call_sse_omits_usage_by_default():
+    tcs = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+    events = list(StreamingAdapter("fusion/x").tool_call_sse(tcs))
+    assert not any('"usage"' in e for e in events)

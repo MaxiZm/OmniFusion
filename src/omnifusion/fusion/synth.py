@@ -1,16 +1,8 @@
-import asyncio
 from typing import List, AsyncGenerator, Union, Any
 from .types import Preset, PanelResult, JudgeAnalysis
-from ..llm.client import llm_client
-from ..budget.ledger import reserve_budget, reconcile_budget
-from ..providers.pricing import (
-    calculate_actual_cost,
-    estimate_call_cost,
-    estimate_tokens,
-    get_model_cost_estimate,
-    usd_to_micro,
-)
+from .runtime.executor import BudgetedExecutor
 from ..api.schemas import ChatCompletionRequest
+from ..api.normalize import generation_passthrough_kwargs
 
 
 async def run_synthesis(
@@ -31,7 +23,12 @@ async def run_synthesis(
     # 2. Render system content using prompts template
     from .prompts import render_final_prompt
 
-    system_content = render_final_prompt(panel_answers, judge_analysis, run_id)
+    system_content = render_final_prompt(
+        panel_answers,
+        judge_analysis,
+        run_id,
+        prompt_config=getattr(preset, "prompts", None),
+    )
 
     # 3. Assemble messages, preserving original history.
     # If the user sent a system message, merge it into the synthesis system prompt
@@ -59,68 +56,32 @@ async def run_synthesis(
 
     kwargs = {
         "timeout": preset.final.timeout,
-        "max_tokens": max_tokens,
         "temperature": request.temperature,
         "top_p": request.top_p,
         "stop": request.stop,
     }
     # Filter out None values
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    # Honor caller generation params (seed/penalties/service_tier) on the final
+    # synthesis so e.g. seed-based reproducibility actually reaches the model.
+    kwargs.update(generation_passthrough_kwargs(request))
 
-    # 5. Dynamic budget reservation (synth stage)
-    cost_usd = estimate_call_cost(preset.final_model, final_messages, max_tokens)
-    reserve_micro_usd = max(1, int(cost_usd * 1_000_000))
-    reservation_id = await reserve_budget(run_id, "final", reserve_micro_usd)
-
-    response = None
-    reconciled = False
-    try:
-        response = await llm_client.acompletion(
-            provider_id="default",
+    executor = BudgetedExecutor(run_id)
+    if request.stream:
+        return await executor.stream(
+            "final",
+            provider_id=preset.provider_id_for(preset.final_model, "final"),
             model=preset.final_model,
             messages=final_messages,
-            stream=request.stream,
+            max_tokens=max_tokens,
             **kwargs,
         )
 
-        if request.stream:
-            # We return the async generator and handle budget reconciliation after consumption
-            async def chunk_generator():
-                completion_text = ""
-                try:
-                    async for chunk in response:
-                        if chunk.choices and len(chunk.choices) > 0:
-                            delta = chunk.choices[0].delta
-                            if delta and delta.content:
-                                completion_text += delta.content
-                        yield chunk
-                finally:
-                    # Stream finished: estimate final cost and reconcile
-                    async def run_cleanup():
-                        prompt_tokens = estimate_tokens(preset.final_model, final_messages)
-                        approx_completion_tokens = max(1, len(completion_text) // 4)
-                        actual_cost_usd = get_model_cost_estimate(
-                            preset.final_model, prompt_tokens, approx_completion_tokens
-                        )
-                        context["cost_usd"] = actual_cost_usd
-                        await reconcile_budget(
-                            reservation_id, usd_to_micro(actual_cost_usd)
-                        )
-                    await asyncio.shield(run_cleanup())
-
-            reconciled = True
-            return chunk_generator()
-        else:
-            cost_usd = calculate_actual_cost(response, preset.final_model)
-            context["cost_usd"] = cost_usd
-            async def run_cleanup():
-                await reconcile_budget(reservation_id, usd_to_micro(cost_usd))
-            await asyncio.shield(run_cleanup())
-            reconciled = True
-            return response
-
-    finally:
-        if not reconciled:
-            async def run_cleanup():
-                await reconcile_budget(reservation_id, 0)
-            await asyncio.shield(run_cleanup())
+    return await executor.call(
+        "final",
+        provider_id=preset.provider_id_for(preset.final_model, "final"),
+        model=preset.final_model,
+        messages=final_messages,
+        max_tokens=max_tokens,
+        **kwargs,
+    )

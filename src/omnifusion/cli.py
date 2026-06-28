@@ -193,10 +193,50 @@ async def import_db(filepath: str = "omnifusion.yaml"):
     )
 
 
+def _read_json_or_yaml(filepath: str):
+    with open(filepath, "r") as f:
+        if filepath.endswith(".json"):
+            return json.load(f)
+        return yaml.safe_load(f)
+
+
+async def preset_save_async(filepath: str):
+    from .fusion.types import Preset
+    from .store.presets import save_preset
+
+    preset = Preset.model_validate(_read_json_or_yaml(filepath))
+    await save_preset(preset)
+    print(f"Saved preset {preset.name}")
+
+
+async def preset_get_async(name: str):
+    from .store.presets import get_preset
+
+    preset = await get_preset(name)
+    if not preset:
+        print(f"ERROR: Preset {name} not found.")
+        sys.exit(1)
+    print(preset.model_dump_json(indent=2))
+
+
+async def preset_list_async():
+    from .store.presets import list_presets
+
+    presets = await list_presets()
+    print(json.dumps([preset.model_dump() for preset in presets], indent=2))
+
+
+async def preset_delete_async(name: str):
+    from .store.presets import delete_preset
+
+    await delete_preset(name)
+    print(f"Deleted preset {name}")
+
+
 def main():
     if len(sys.argv) < 2:
         print(
-            "Usage: omnifusion [genkey | rotate-key | purge | export [file] | import [file]]"
+            "Usage: omnifusion [genkey | rotate-key | purge | export [file] | import [file] | preset ...]"
         )
         sys.exit(1)
 
@@ -213,9 +253,25 @@ def main():
     elif cmd == "import":
         file = sys.argv[2] if len(sys.argv) > 2 else "omnifusion.yaml"
         asyncio.run(import_db(file))
+    elif cmd == "preset":
+        if len(sys.argv) < 3:
+            print("Usage: omnifusion preset [list | get NAME | save FILE | delete NAME]")
+            sys.exit(1)
+        subcmd = sys.argv[2]
+        if subcmd == "list":
+            asyncio.run(preset_list_async())
+        elif subcmd == "get" and len(sys.argv) >= 4:
+            asyncio.run(preset_get_async(sys.argv[3]))
+        elif subcmd == "save" and len(sys.argv) >= 4:
+            asyncio.run(preset_save_async(sys.argv[3]))
+        elif subcmd == "delete" and len(sys.argv) >= 4:
+            asyncio.run(preset_delete_async(sys.argv[3]))
+        else:
+            print("Usage: omnifusion preset [list | get NAME | save FILE | delete NAME]")
+            sys.exit(1)
     else:
         print(f"Unknown command: {cmd}")
-        print("Usage: omnifusion [genkey | rotate-key | purge | export | import]")
+        print("Usage: omnifusion [genkey | rotate-key | purge | export | import | preset]")
         sys.exit(1)
 
 
