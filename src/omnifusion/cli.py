@@ -2,6 +2,7 @@ import sys
 import os
 import asyncio
 import json
+import secrets
 import yaml
 from cryptography.fernet import Fernet
 from .store.db import get_db_connection
@@ -14,6 +15,189 @@ def genkey():
     print(
         "\nWARNING: Keep this key safe. If you lose it, you will not be able to decrypt your stored provider API keys."
     )
+
+
+# --- QuickStart ------------------------------------------------------------
+# One command that takes a fresh checkout to a server that boots: provision the
+# three required secrets in .env (without clobbering real values an operator has
+# already set), then create the SQLite database and key-verification token.
+
+ENV_PATH = ".env"
+ENV_EXAMPLE_PATH = ".env.example"
+
+# Values that mean "still needs to be filled in". Compared case-insensitively
+# after stripping. The secret-key/admin-password sets mirror settings.py; the
+# .env.example client-key sample is `key_one,key_two`.
+_PLACEHOLDER_SECRET_KEYS = {"", "your_fernet_secret_key", "your-fernet-secret-key", "changeme"}
+_PLACEHOLDER_ADMIN_PASSWORDS = {"", "your_admin_password", "your-admin-password", "changeme"}
+_PLACEHOLDER_API_KEYS = {"", "key_one", "key_two", "key1", "key2", "your_api_key"}
+
+
+def _is_placeholder_secret_key(value: str) -> bool:
+    return value.strip().lower() in _PLACEHOLDER_SECRET_KEYS
+
+
+def _is_placeholder_admin_password(value: str) -> bool:
+    return value.strip().lower() in _PLACEHOLDER_ADMIN_PASSWORDS
+
+
+def _is_placeholder_api_keys(value: str) -> bool:
+    keys = [k.strip().lower() for k in value.split(",") if k.strip()]
+    return not keys or all(k in _PLACEHOLDER_API_KEYS for k in keys)
+
+
+def _generate_client_key() -> str:
+    return "sk-omnifusion-" + secrets.token_urlsafe(24)
+
+
+def _generate_admin_password() -> str:
+    return secrets.token_urlsafe(18)
+
+
+def _read_env_lines(path: str) -> list[str]:
+    if not os.path.exists(path):
+        return []
+    with open(path, "r") as f:
+        return f.read().splitlines()
+
+
+def _get_env_value(lines: list[str], key: str) -> str | None:
+    """Return the raw value for KEY=VALUE in the .env lines, or None if absent."""
+    prefix = f"{key}="
+    for line in lines:
+        if line.lstrip().startswith(prefix) and not line.lstrip().startswith("#"):
+            return line.split("=", 1)[1]
+    return None
+
+
+def _set_env_value(lines: list[str], key: str, value: str) -> list[str]:
+    """Set KEY=VALUE in-place if present, otherwise append it. Preserves comments
+    and ordering of every other line so a hand-edited .env survives untouched."""
+    prefix = f"{key}="
+    out = []
+    replaced = False
+    for line in lines:
+        if line.lstrip().startswith(prefix) and not line.lstrip().startswith("#"):
+            out.append(f"{key}={value}")
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        out.append(f"{key}={value}")
+    return out
+
+
+def _write_env_lines(path: str, lines: list[str]) -> None:
+    # .env holds secrets — write it owner-read/write only (0o600), matching the
+    # treatment of `omnifusion export`.
+    old_umask = os.umask(0o177)
+    try:
+        with open(path, "w") as f:
+            f.write("\n".join(lines).rstrip("\n") + "\n")
+    finally:
+        os.umask(old_umask)
+
+
+def _reload_settings() -> None:
+    """Re-read .env into the in-process settings singleton so the just-written
+    secret key is live for init_db (which writes the key-verification token)."""
+    from .settings import settings, Settings
+
+    settings.__dict__.update(Settings().__dict__)
+
+
+def quickstart(serve: bool = False) -> None:
+    from .settings import validate_startup_security
+    from .secrets.crypto import generate_key
+    from .store.db import init_db
+
+    print("=" * 60)
+    print("OmniFusion QuickStart")
+    print("=" * 60)
+
+    # 1. Ensure a .env exists, seeded from .env.example when available.
+    created_env = False
+    if not os.path.exists(ENV_PATH):
+        if os.path.exists(ENV_EXAMPLE_PATH):
+            lines = _read_env_lines(ENV_EXAMPLE_PATH)
+            print(f"Created {ENV_PATH} from {ENV_EXAMPLE_PATH}")
+        else:
+            lines = []
+            print(f"Created {ENV_PATH}")
+        created_env = True
+    else:
+        lines = _read_env_lines(ENV_PATH)
+        print(f"Using existing {ENV_PATH}")
+
+    # 2. Fill the three required secrets only when missing/placeholder, so an
+    #    operator's real values are never overwritten.
+    generated_client_key = None
+
+    secret_key = _get_env_value(lines, "OMNIFUSION_SECRET_KEY") or ""
+    if _is_placeholder_secret_key(secret_key):
+        lines = _set_env_value(lines, "OMNIFUSION_SECRET_KEY", generate_key())
+        print("  OMNIFUSION_SECRET_KEY     generated")
+    else:
+        print("  OMNIFUSION_SECRET_KEY     kept (already set)")
+
+    admin_password = _get_env_value(lines, "OMNIFUSION_ADMIN_PASSWORD") or ""
+    if _is_placeholder_admin_password(admin_password):
+        new_password = _generate_admin_password()
+        lines = _set_env_value(lines, "OMNIFUSION_ADMIN_PASSWORD", new_password)
+        print(f"  OMNIFUSION_ADMIN_PASSWORD generated -> {new_password}")
+    else:
+        print("  OMNIFUSION_ADMIN_PASSWORD kept (already set)")
+
+    api_keys = _get_env_value(lines, "OMNIFUSION_API_KEYS") or ""
+    if _is_placeholder_api_keys(api_keys):
+        generated_client_key = _generate_client_key()
+        lines = _set_env_value(lines, "OMNIFUSION_API_KEYS", generated_client_key)
+        print(f"  OMNIFUSION_API_KEYS       generated -> {generated_client_key}")
+    else:
+        print("  OMNIFUSION_API_KEYS       kept (already set)")
+
+    _write_env_lines(ENV_PATH, lines)
+
+    # 3. Reload settings from the new .env, validate, and initialize the DB.
+    _reload_settings()
+    try:
+        validate_startup_security()
+    except ValueError as exc:
+        print(f"\nERROR: {exc}")
+        sys.exit(1)
+
+    asyncio.run(init_db())
+    from .settings import settings as _settings
+
+    print(f"Initialized database at {_settings.db_path}")
+
+    # 4. Summary + copy-pasteable next steps.
+    print("\n" + "=" * 60)
+    print("Ready. Next steps:")
+    print("=" * 60)
+    if generated_client_key:
+        print(f"\nClient API key:  {generated_client_key}")
+        print("  (also stored in OMNIFUSION_API_KEYS in .env)")
+    print("\n1. Start the server:")
+    print("     make dev            # or: omnifusion quickstart --serve")
+    print("\n2. Open the admin UI to register a provider + preset:")
+    print("     http://127.0.0.1:8000/admin")
+    print("\n3. Call chat completions:")
+    sample_key = generated_client_key or "$OMNIFUSION_API_KEY"
+    print("     curl http://127.0.0.1:8000/v1/chat/completions \\")
+    print(f'       -H "Authorization: Bearer {sample_key}" \\')
+    print('       -H "Content-Type: application/json" \\')
+    print('       -d \'{"model": "fusion/general", "messages": '
+          '[{"role": "user", "content": "Hello"}]}\'')
+    if created_env or generated_client_key:
+        print("\nKeep .env private — it now contains live secrets (perms 0o600).")
+
+    # 5. Optionally boot the dev server right away.
+    if serve:
+        print("\nStarting development server on http://127.0.0.1:8000 ...")
+        import uvicorn
+
+        uvicorn.run("src.omnifusion.main:app", host="127.0.0.1", port=8000, reload=True)
 
 
 async def rotate_key_async():
@@ -236,12 +420,14 @@ async def preset_delete_async(name: str):
 def main():
     if len(sys.argv) < 2:
         print(
-            "Usage: omnifusion [genkey | rotate-key | purge | export [file] | import [file] | preset ...]"
+            "Usage: omnifusion [quickstart [--serve] | genkey | rotate-key | purge | export [file] | import [file] | preset ...]"
         )
         sys.exit(1)
 
     cmd = sys.argv[1]
-    if cmd == "genkey":
+    if cmd == "quickstart":
+        quickstart(serve="--serve" in sys.argv[2:])
+    elif cmd == "genkey":
         genkey()
     elif cmd == "rotate-key":
         asyncio.run(rotate_key_async())
@@ -271,7 +457,7 @@ def main():
             sys.exit(1)
     else:
         print(f"Unknown command: {cmd}")
-        print("Usage: omnifusion [genkey | rotate-key | purge | export | import | preset]")
+        print("Usage: omnifusion [quickstart | genkey | rotate-key | purge | export | import | preset]")
         sys.exit(1)
 
 

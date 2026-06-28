@@ -82,7 +82,45 @@ ablation evidence before any benchmark or default-strategy claim.
 - Optional: Docker / Docker Compose
 - Optional: SearXNG, Tavily, or Brave for web search
 
-## Quickstart
+## QuickStart
+
+The fastest path from a fresh checkout to a running server is one command:
+
+```bash
+git clone https://github.com/MaxiZm/OmniFusion.git
+cd OmniFusion
+make quickstart
+```
+
+`make quickstart` installs dependencies, then runs `omnifusion quickstart --serve`,
+which:
+
+1. creates `.env` from `.env.example` if it does not exist,
+2. generates any **missing** secrets — `OMNIFUSION_SECRET_KEY` (Fernet),
+   `OMNIFUSION_ADMIN_PASSWORD`, and an `OMNIFUSION_API_KEYS` client key — writing
+   `.env` with `0o600` permissions,
+3. initializes the SQLite database and key-verification token,
+4. prints the generated admin password and client API key, then starts the dev
+   server on `http://127.0.0.1:8000`.
+
+It is **idempotent and safe to re-run**: real secrets you have already set are
+never overwritten — only placeholder values are filled in. Provision without
+booting the server by dropping `--serve`:
+
+```bash
+uv run omnifusion quickstart          # provision .env + DB, print next steps
+uv run omnifusion quickstart --serve  # ...and start the dev server
+```
+
+After it boots, open `http://127.0.0.1:8000/admin` to register a provider and
+preset (next section), then call `fusion/<preset>`.
+
+`OMNIFUSION_SECRET_KEY` encrypts provider API keys stored in SQLite. Keep it safe:
+losing it means existing encrypted provider keys cannot be decrypted.
+
+## Manual Setup
+
+Prefer to wire things up by hand? The steps below are what `quickstart` automates.
 
 ### 1. Clone And Install
 
@@ -490,6 +528,8 @@ make fmt
 Useful CLI commands:
 
 ```bash
+uv run omnifusion quickstart          # provision .env + init DB
+uv run omnifusion quickstart --serve  # ...and start the dev server
 uv run omnifusion genkey
 uv run omnifusion preset list
 uv run omnifusion preset get general
