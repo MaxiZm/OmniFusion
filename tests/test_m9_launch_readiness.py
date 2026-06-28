@@ -63,7 +63,7 @@ def test_readme_has_ci_badge_and_from_readme_walkthrough():
     # The exit-gate 'works FROM README' flow: configure -> create/confirm -> call.
     assert "omnifusion genkey" in readme
     assert "preset list" in readme
-    assert "fugu-ultra" in readme
+    assert "fusion/general" in readme
     assert "/v1/chat/completions" in readme
     # Links operators to the docs set.
     assert "docs/quickstart.md" in readme

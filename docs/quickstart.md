@@ -28,9 +28,7 @@ curl http://127.0.0.1:8000/v1/models \
   -H "Authorization: Bearer $OMNIFUSION_API_KEY"
 ```
 
-Use `fusion/<preset>`, `openrouter/fusion`, `fugu`, or `fugu-ultra` as model IDs.
-The `fugu` aliases are transparent compatibility placeholders unless explicitly
-reconfigured.
+Use `fusion/<preset>` or `openrouter/fusion` as model IDs.
 
 ## More Operator Docs
 

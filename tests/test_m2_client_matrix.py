@@ -75,5 +75,3 @@ def test_api_compatibility_doc_publishes_responses_subset_and_alias_status():
     assert "response.output_text.delta" in doc
     assert "response.completed" in doc
     assert "previous_response_id" in doc
-    assert "compat_placeholder - not conductor-backed yet" in doc
-    assert "ablation-proven" in doc

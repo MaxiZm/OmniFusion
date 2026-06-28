@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from omnifusion.settings import settings
+from omnifusion.store.db import init_db
 
 
 class MockUsage(BaseModel):
@@ -30,8 +31,30 @@ class MockResponse:
         self.usage = MockUsage()
 
 
+async def _seed_ultra():
+    """Seed a minimal single-model fusion preset to stand in for the removed
+    fugu-ultra compatibility placeholder."""
+    from omnifusion.fusion.types import Preset, PresetStage
+    from omnifusion.store.presets import save_preset
+
+    stage = PresetStage(max_tokens=64, timeout=10)
+    await save_preset(
+        Preset(
+            name="ultra",
+            strategy="B",
+            panel_models=["model-a"],
+            panel=stage,
+            judge_model="model-a",
+            judge=stage,
+            final_model="model-a",
+            final=stage,
+            cost_ceiling=1.0,
+        )
+    )
+
+
 @pytest.mark.asyncio
-async def test_opencode_style_tool_loop_through_fugu_ultra(tmp_path, monkeypatch):
+async def test_opencode_style_tool_loop_through_fusion_preset(tmp_path, monkeypatch):
     import omnifusion.llm.client as client_mod
     from omnifusion.main import app
 
@@ -95,13 +118,15 @@ async def test_opencode_style_tool_loop_through_fugu_ultra(tmp_path, monkeypatch
     }
 
     try:
+        await init_db()
+        await _seed_ultra()
         monkeypatch.setattr(client_mod.llm_client, "acompletion", fake_acompletion)
         with TestClient(app) as client:
             first = client.post(
                 "/v1/chat/completions",
                 headers={"Authorization": "Bearer opencode-key"},
                 json={
-                    "model": "fugu-ultra",
+                    "model": "fusion/ultra",
                     "messages": [{"role": "user", "content": "Weather in Paris?"}],
                     "tools": [weather_tool],
                     "tool_choice": "auto",
@@ -121,7 +146,7 @@ async def test_opencode_style_tool_loop_through_fugu_ultra(tmp_path, monkeypatch
                 "/v1/chat/completions",
                 headers={"Authorization": "Bearer opencode-key"},
                 json={
-                    "model": "fugu-ultra",
+                    "model": "fusion/ultra",
                     "messages": [
                         {"role": "user", "content": "Weather in Paris?"},
                         {
@@ -151,14 +176,14 @@ async def test_opencode_style_tool_loop_through_fugu_ultra(tmp_path, monkeypatch
 
     assert first.status_code == 200
     assert first_run_id
-    assert first_payload["model"] == "fusion/fugu-ultra"
+    assert first_payload["model"] == "fusion/ultra"
     assert first_payload["choices"][0]["finish_reason"] == "tool_calls"
     assert tool_calls[0]["function"]["name"] == "get_weather"
     assert trace.status_code == 200
 
     assert second.status_code == 200
     assert second_run_id
-    assert second.json()["model"] == "fusion/fugu-ultra"
+    assert second.json()["model"] == "fusion/ultra"
     assert second.json()["choices"][0]["message"]["content"] == "It is sunny in Paris."
     assert second_trace.status_code == 200
     assert second_trace.json()["final_answer"] == "It is sunny in Paris."

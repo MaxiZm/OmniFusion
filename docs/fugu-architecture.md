@@ -4,18 +4,6 @@ OmniFusion provides a transparent approximation of Fugu-style orchestration. It
 does not claim to reproduce proprietary Sakana internals, learned policies, or
 Fugu Ultra quality.
 
-## Alias Status
-
-The `fugu` and `fugu-ultra` model aliases resolve to compatibility presets so
-OpenAI-compatible clients never see a missing model. Those presets remain
-placeholder presets until ablation-proven configs replace them.
-
-Their model entries and traces self-label with:
-
-```text
-compat_placeholder - not conductor-backed yet
-```
-
 ## Conductor Strategy
 
 Preset `strategy: "conductor"` enables the experimental conductor path. It is

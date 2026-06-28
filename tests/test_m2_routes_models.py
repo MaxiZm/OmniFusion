@@ -5,6 +5,26 @@ from omnifusion.settings import settings
 from omnifusion.store.db import init_db
 
 
+async def _seed_general():
+    from omnifusion.fusion.types import Preset, PresetStage
+    from omnifusion.store.presets import save_preset
+
+    stage = PresetStage(max_tokens=64, timeout=10)
+    await save_preset(
+        Preset(
+            name="general",
+            strategy="B",
+            panel_models=["panel-a"],
+            panel=stage,
+            judge_model="judge-a",
+            judge=stage,
+            final_model="final-a",
+            final=stage,
+            cost_ceiling=1.0,
+        )
+    )
+
+
 @pytest.fixture
 def client(tmp_path):
     from omnifusion.main import app
@@ -37,25 +57,18 @@ def test_api_v1_models_mirrors_v1(client):
     assert api_v1_response.json()["data"] == v1_response.json()["data"]
 
 
-def test_model_retrieve_supports_aliases_and_fusion_ids(client):
+def test_model_retrieve_supports_alias_and_rejects_removed_fugu(client):
     headers = {"Authorization": "Bearer route-key"}
 
-    fugu = client.get("/v1/models/fugu", headers=headers)
-    fusion_fugu = client.get("/v1/models/fusion/fugu", headers=headers)
     api_v1_alias = client.get("/api/v1/models/openrouter/fusion", headers=headers)
-
-    assert fugu.status_code == 200
-    assert fugu.json()["id"] == "fugu"
-    assert fugu.json()["alias_of"] == "fusion/fugu"
-    assert fugu.json()["status"] == "compat_placeholder - not conductor-backed yet"
-
-    assert fusion_fugu.status_code == 200
-    assert fusion_fugu.json()["id"] == "fusion/fugu"
-    assert fusion_fugu.json()["status"] == "compat_placeholder - not conductor-backed yet"
+    removed_fugu = client.get("/v1/models/fugu", headers=headers)
 
     assert api_v1_alias.status_code == 200
     assert api_v1_alias.json()["id"] == "openrouter/fusion"
     assert api_v1_alias.json()["alias_of"] == "fusion/general"
+
+    # The fugu compatibility aliases were removed.
+    assert removed_fugu.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -86,13 +99,14 @@ async def test_api_v1_chat_mirror_uses_same_route(tmp_path, monkeypatch):
 
     try:
         await init_db()
+        await _seed_general()
         monkeypatch.setattr(chat_mod, "run_fusion", fake_run_fusion)
         with TestClient(app) as test_client:
             response = test_client.post(
                 "/api/v1/chat/completions",
                 headers={"Authorization": "Bearer chat-key"},
                 json={
-                    "model": "fugu-ultra",
+                    "model": "fusion/general",
                     "messages": [{"role": "user", "content": "hello"}],
                 },
             )
@@ -101,4 +115,4 @@ async def test_api_v1_chat_mirror_uses_same_route(tmp_path, monkeypatch):
         settings.omnifusion_api_keys = old_keys
 
     assert response.status_code == 200
-    assert response.json()["model"] == "fusion/fugu-ultra"
+    assert response.json()["model"] == "fusion/general"

@@ -18,10 +18,9 @@ Initial eval-first roadmap implementation (Step 0 → M9).
   -e .`, `omnifusion` console script, `importlib.resources` templates).
 - **M1b** — Aider-driven coding eval harness (`eval-coding-smoke` / `-full`) and a
   thin internal tool-calling micro-bench (`eval-tool-smoke`).
-- **M1c / M2** — bounded request/preset schemas; request normalization; model
-  aliases (`openrouter/fusion`, self-labeling `fugu` / `fugu-ultra` placeholders);
-  `/api/v1` mirror; minimal `/v1/responses` subset; uniform error envelopes;
-  client-contract matrix.
+- **M1c / M2** — bounded request/preset schemas; request normalization; the
+  `openrouter/fusion` model alias; `/api/v1` mirror; minimal `/v1/responses`
+  subset; uniform error envelopes; client-contract matrix.
 - **M3a–c** — `BudgetedExecutor` (one reconcile shield per model call); a single
   canonical SSE/response adapter (`StreamingAdapter` / `ResponseShaper`); strategy
   registry with the `StrategyResult` contract.
@@ -40,8 +39,8 @@ Initial eval-first roadmap implementation (Step 0 → M9).
 
 ### Notes
 - No benchmark/advantage claim rests on mocked tests. The default strategy remains
-  the classic council (`B`); `fugu`/`fugu-ultra` remain transparent compat
-  placeholders until a real-provider (Tier C) ablation clears both baselines.
+  the classic council (`B`); the experimental conductor strategy stays off by
+  default until a real-provider (Tier C) ablation clears both baselines.
 
 [Unreleased]: https://github.com/MaxiZm/OmniFusion/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/MaxiZm/OmniFusion/releases/tag/v0.1.0

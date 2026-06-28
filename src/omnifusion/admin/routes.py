@@ -425,7 +425,6 @@ async def save_preset_route(
     on_final_failure: str = Form("error"),
     min_panel_success: int = Form(1),
     display_name: str = Form(""),
-    mode: str = Form("fusion"),
     web_enabled: bool = Form(False),
     prompt_global: str = Form(""),
     prompt_panel: str = Form(""),
@@ -455,7 +454,6 @@ async def save_preset_route(
         preset = Preset(
             name=name,
             display_name=display_name or name,
-            mode=mode if mode in ("fusion", "fugu_compat") else "fusion",
             strategy=strategy,
             web_enabled=web_enabled,
             prompts=PresetPrompts(global_prompt=prompt_global, role_prompts=role_prompts),

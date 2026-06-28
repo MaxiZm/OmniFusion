@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from .auth import verify_api_key
 from .model_names import model_alias_entries
 from .errors import OmniFusionError
-from ..store.presets import ensure_compat_placeholder_presets, list_presets
+from ..store.presets import list_presets
 from ..settings import settings
 import time
 
@@ -10,19 +10,15 @@ router = APIRouter()
 
 
 def preset_model_entry(preset, created: int) -> dict:
-    entry = {
+    return {
         "id": f"fusion/{preset.name}",
         "object": "model",
         "created": created,
         "owned_by": "omnifusion",
     }
-    if preset.compat_status:
-        entry["status"] = preset.compat_status
-    return entry
 
 
 async def all_model_entries(created: int) -> list[dict]:
-    await ensure_compat_placeholder_presets()
     presets = await list_presets()
     data = [preset_model_entry(preset, created) for preset in presets]
     data.extend(model_alias_entries(created))

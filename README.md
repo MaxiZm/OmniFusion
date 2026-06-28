@@ -12,10 +12,10 @@ operate themselves: explicit provider configuration, local SQLite state,
 encrypted provider keys, request budgets, traces, and optional server-side web
 grounding.
 
-OmniFusion also exposes compatibility aliases for `fugu`, `fugu-ultra`, and
-`openrouter/fusion`. Those aliases are transparent placeholders until real
-provider ablation evidence proves a stronger preset. The project does not claim
-to be a complete Sakana Fugu / Fugu Ultra replacement.
+OmniFusion also exposes an `openrouter/fusion` alias that resolves to the default
+fusion preset. The project does not claim to be a complete Sakana Fugu / Fugu
+Ultra replacement; the experimental conductor strategy stays off by default until
+real provider ablation evidence proves a stronger preset.
 
 ## What It Is
 
@@ -30,8 +30,8 @@ to be a complete Sakana Fugu / Fugu Ultra replacement.
 
 - It is not a coding-agent runtime. Aider, OpenCode, Cursor, or your own client
   still owns filesystem edits, shell commands, and local tool execution.
-- It is not a benchmark-backed Fugu replacement yet. The `fugu` aliases are
-  clearly labeled compatibility placeholders.
+- It is not a benchmark-backed Fugu replacement yet. Any Fugu-style quality claim
+  needs Tier C ablation evidence first.
 - It is not a hosted service. You bring provider accounts, API keys, network
   policy, and deployment hardening.
 
@@ -171,9 +171,8 @@ Use the admin UI or CLI:
 uv run omnifusion preset list
 ```
 
-The compatibility presets `fugu` and `fugu-ultra` are created automatically as
-placeholder presets. For a useful setup, create a real preset such as `general`
-with panel, judge, and final models registered against your providers.
+Create a real preset such as `general` with panel, judge, and final models
+registered against your providers.
 
 ### 6. Call Chat Completions
 
@@ -194,8 +193,6 @@ Use any of these model names depending on your preset:
 
 - `fusion/<preset>`
 - `openrouter/fusion`, aliasing `fusion/general`
-- `fugu`, aliasing `fusion/fugu`
-- `fugu-ultra`, aliasing `fusion/fugu-ultra`
 
 ## Docker Compose
 

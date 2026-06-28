@@ -14,7 +14,6 @@ def v2_payload(name="api-v2"):
     return {
         "name": name,
         "display_name": "API V2",
-        "mode": "fusion",
         "version": 2,
         "strategy": "B",
         "models": [
@@ -122,7 +121,6 @@ async def test_admin_console_save_creates_v2_preset(tmp_path):
             on_final_failure="error",
             min_panel_success=1,
             display_name="Console V2",
-            mode="fusion",
             web_enabled=True,
             prompt_global="be concise",
             prompt_panel="draft",
@@ -170,7 +168,6 @@ async def test_admin_console_save_validation_error_returns_400(tmp_path):
             on_final_failure="error",
             min_panel_success=1,
             display_name="Bad Console",
-            mode="fusion",
             web_enabled=False,
             prompt_global="",
             prompt_panel="",

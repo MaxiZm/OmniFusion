@@ -8,6 +8,28 @@ from omnifusion.settings import settings
 from omnifusion.store.db import init_db
 
 
+async def _seed_general():
+    """Seed a minimal real fusion preset so requests resolve once the fugu
+    compatibility placeholders are gone."""
+    from omnifusion.fusion.types import Preset, PresetStage
+    from omnifusion.store.presets import save_preset
+
+    stage = PresetStage(max_tokens=64, timeout=10)
+    await save_preset(
+        Preset(
+            name="general",
+            strategy="B",
+            panel_models=["panel-a"],
+            panel=stage,
+            judge_model="judge-a",
+            judge=stage,
+            final_model="final-a",
+            final=stage,
+            cost_ceiling=1.0,
+        )
+    )
+
+
 @pytest.mark.asyncio
 async def test_responses_endpoint_maps_text_request_to_chat_shape(tmp_path, monkeypatch):
     import omnifusion.api.chat as chat_mod
@@ -41,13 +63,14 @@ async def test_responses_endpoint_maps_text_request_to_chat_shape(tmp_path, monk
 
     try:
         await init_db()
+        await _seed_general()
         monkeypatch.setattr(chat_mod, "run_fusion", fake_run_fusion)
         with TestClient(app) as client:
             response = client.post(
                 "/v1/responses",
                 headers={"Authorization": "Bearer responses-key"},
                 json={
-                    "model": "fugu",
+                    "model": "fusion/general",
                     "instructions": "be concise",
                     "input": "hello",
                     "max_output_tokens": 33,
@@ -59,7 +82,7 @@ async def test_responses_endpoint_maps_text_request_to_chat_shape(tmp_path, monk
         settings.omnifusion_api_keys = old_keys
 
     assert response.status_code == 200
-    assert captured["model"] == "fusion/fugu"
+    assert captured["model"] == "fusion/general"
     assert captured["messages"][0]["role"] == "system"
     assert captured["messages"][0]["content"] == "be concise"
     assert captured["messages"][1]["role"] == "user"
@@ -70,7 +93,7 @@ async def test_responses_endpoint_maps_text_request_to_chat_shape(tmp_path, monk
     payload = response.json()
     assert payload["object"] == "response"
     assert payload["created_at"] == 123
-    assert payload["model"] == "fusion/fugu"
+    assert payload["model"] == "fusion/general"
     assert payload["status"] == "completed"
     assert payload["output"][0]["content"][0] == {
         "type": "output_text",
@@ -110,12 +133,13 @@ async def test_api_v1_responses_stream_emits_minimal_text_events(tmp_path, monke
 
     try:
         await init_db()
+        await _seed_general()
         monkeypatch.setattr(chat_mod, "run_fusion", fake_run_fusion)
         with TestClient(app) as client:
             response = client.post(
                 "/api/v1/responses",
                 headers={"Authorization": "Bearer responses-stream-key"},
-                json={"model": "fugu", "input": "hello", "stream": True},
+                json={"model": "fusion/general", "input": "hello", "stream": True},
             )
     finally:
         settings.db_path = old_db
@@ -170,12 +194,13 @@ async def test_responses_stream_reports_usage_in_completed(tmp_path, monkeypatch
 
     try:
         await init_db()
+        await _seed_general()
         monkeypatch.setattr(chat_mod, "run_fusion", fake_run_fusion)
         with TestClient(app) as client:
             response = client.post(
                 "/v1/responses",
                 headers={"Authorization": "Bearer responses-usage-key"},
-                json={"model": "fugu", "input": "hello", "stream": True},
+                json={"model": "fusion/general", "input": "hello", "stream": True},
             )
     finally:
         settings.db_path = old_db

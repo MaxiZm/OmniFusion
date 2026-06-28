@@ -24,7 +24,6 @@ import os
 import time
 import asyncio
 from .store.db import init_db, get_db_connection, sweep_expired_sessions
-from .store.presets import ensure_compat_placeholder_presets
 
 # Configure logging to redact secrets if necessary
 configure_logging(settings.omnifusion_log_level, settings.omnifusion_log_format)
@@ -51,7 +50,6 @@ async def lifespan(app: FastAPI):
 
     # 1. Initialize DB and tables
     await init_db()
-    await ensure_compat_placeholder_presets()
     # 2. Check and enforce single worker constraint
     await check_single_worker()
 

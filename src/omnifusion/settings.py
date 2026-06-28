@@ -74,7 +74,6 @@ class Settings(BaseSettings):
     max_panel: int = 8
     min_panel_success: int = 1
     omnifusion_default_fusion_preset: str = "general"
-    omnifusion_compat_placeholder_model: str = "compat-placeholder-model"
     omnifusion_web_search_provider: str = "searxng"
     omnifusion_searxng_base_url: str = "http://localhost:8080"
     omnifusion_tavily_api_key: Optional[SecretStr] = None

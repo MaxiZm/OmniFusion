@@ -46,7 +46,6 @@ def test_admin_preset_form_exposes_full_v2_fields():
     form = Path("src/omnifusion/web/templates/presets.html").read_text()
     for field in (
         'name="display_name"',
-        'name="mode"',
         'name="web_enabled"',
         'name="prompt_global"',
         'name="prompt_panel"',
@@ -60,11 +59,10 @@ def test_admin_preset_form_exposes_full_v2_fields():
 
 def test_full_v2_preset_authored_via_admin_fields_roundtrips():
     """Mirrors what save_preset_route builds from the form, proving the console can
-    author a complete PresetV2 (display_name/mode/web_enabled/prompts)."""
+    author a complete PresetV2 (display_name/web_enabled/prompts)."""
     preset = Preset(
         name="authored",
         display_name="Authored Council",
-        mode="fusion",
         strategy="B",
         web_enabled=True,
         prompts=PresetPrompts(

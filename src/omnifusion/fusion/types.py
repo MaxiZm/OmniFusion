@@ -63,7 +63,6 @@ class PresetBandit(BaseModel):
 class PresetV2(BaseModel):
     name: str
     display_name: Optional[str] = None
-    mode: Literal["fusion", "fugu_compat"] = "fusion"
     version: Literal[2] = 2
     models: List[PresetModel] = Field(default_factory=list)
     prompts: PresetPrompts = Field(default_factory=PresetPrompts)
@@ -79,7 +78,6 @@ class PresetV2(BaseModel):
     cost_ceiling: Optional[float] = None
     on_final_failure: Literal["error", "best_panel"] = "error"
     min_panel_success: int = 1
-    compat_status: Optional[str] = None
     # Server-side web grounding for the panel ("web on"). Opt-in per preset; a
     # request's `plugins.web` overrides this for a single request (M5).
     web_enabled: bool = False
@@ -93,7 +91,6 @@ class PresetV2(BaseModel):
         data = dict(data)
         data["version"] = 2
         data.setdefault("display_name", data.get("name"))
-        data.setdefault("mode", "fusion")
         data.setdefault("prompts", {})
         data.setdefault("bandit", {})
 
@@ -281,8 +278,6 @@ def trace_metadata_for_preset(preset: Preset) -> Dict[str, Any]:
     prompts = getattr(preset, "prompts", None)
     if prompts and (prompts.global_prompt or prompts.role_prompts):
         metadata["role_prompts_redacted"] = True
-    if preset.compat_status:
-        metadata["model_status"] = preset.compat_status
     return metadata
 
 

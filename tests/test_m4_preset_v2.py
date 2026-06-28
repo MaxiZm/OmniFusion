@@ -52,7 +52,6 @@ async def test_store_upgrades_legacy_preset_rows_to_v2_compatible_objects(tmp_pa
     assert isinstance(preset, PresetV2)
     assert preset.version == 2
     assert preset.display_name == "legacy"
-    assert preset.mode == "fusion"
     assert preset.panel_models == ["panel-a", "panel-b"]
     assert preset.judge_model == "judge-a"
     assert preset.final_model == "final-a"
@@ -64,31 +63,6 @@ async def test_store_upgrades_legacy_preset_rows_to_v2_compatible_objects(tmp_pa
         ("judge", "judge-a"),
         ("final", "final-a"),
     ]
-
-
-@pytest.mark.asyncio
-async def test_fugu_placeholders_are_v2_configs(tmp_path):
-    from omnifusion.store.presets import ensure_compat_placeholder_presets, get_preset
-
-    old_db = settings.db_path
-    settings.db_path = str(tmp_path / "m4-placeholders.db")
-
-    try:
-        await init_db()
-        await ensure_compat_placeholder_presets()
-        fugu = await get_preset("fugu")
-        ultra = await get_preset("fugu-ultra")
-    finally:
-        settings.db_path = old_db
-
-    assert fugu.version == 2
-    assert fugu.display_name == "Fugu"
-    assert fugu.mode == "fugu_compat"
-    assert fugu.compat_status == "compat_placeholder - not conductor-backed yet"
-    assert {model.role for model in fugu.models} == {"panel", "judge", "final"}
-    assert ultra.version == 2
-    assert ultra.display_name == "Fugu Ultra"
-    assert ultra.mode == "fugu_compat"
 
 
 @pytest.mark.asyncio

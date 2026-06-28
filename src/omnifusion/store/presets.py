@@ -5,9 +5,7 @@ from typing import List, Optional, Tuple
 from pydantic import ValidationError
 
 from .db import get_db_connection
-from ..api.model_names import COMPAT_PLACEHOLDER_PRESET_NAMES, COMPAT_PLACEHOLDER_STATUS
-from ..fusion.types import Preset, PresetPrompts, PresetStage
-from ..settings import settings
+from ..fusion.types import Preset
 
 logger = logging.getLogger("omnifusion.presets")
 
@@ -129,78 +127,3 @@ async def delete_preset(name: str):
     async with get_db_connection() as db:
         await db.execute("DELETE FROM presets WHERE name=?", (name,))
         await db.commit()
-
-
-def compat_placeholder_preset(name: str) -> Preset:
-    max_tokens = min(1024, settings.omnifusion_max_tokens_limit)
-    timeout = min(30, settings.omnifusion_max_stage_timeout)
-    stage = PresetStage(max_tokens=max_tokens, timeout=timeout)
-    model = settings.omnifusion_compat_placeholder_model
-    display_names = {"fugu": "Fugu", "fugu-ultra": "Fugu Ultra"}
-    return Preset(
-        name=name,
-        display_name=display_names.get(name, name),
-        mode="fugu_compat",
-        version=2,
-        strategy="B",
-        panel_models=[model],
-        panel=stage,
-        judge_model=model,
-        judge=stage,
-        final_model=model,
-        final=stage,
-        cost_ceiling=min(settings.request_budget_usd, settings.global_daily_budget_usd),
-        min_panel_success=1,
-        compat_status=COMPAT_PLACEHOLDER_STATUS,
-        prompts=PresetPrompts(
-            role_prompts={
-                "panel": "Transparent Fugu-compatibility placeholder. This is not conductor-backed yet.",
-                "judge": "Transparent Fugu-compatibility placeholder. This is not conductor-backed yet.",
-                "final": "Transparent Fugu-compatibility placeholder. This is not conductor-backed yet.",
-            }
-        ),
-    )
-
-
-async def get_or_create_compat_placeholder_preset(name: str) -> Optional[Preset]:
-    if name not in COMPAT_PLACEHOLDER_PRESET_NAMES:
-        return None
-
-    # Compat placeholders are app-managed and safe to regenerate. If a stored row
-    # predates tightened limits or was hand-edited into an un-loadable state,
-    # regenerate it instead of taking down startup or /v1/models.
-    existing: Optional[Preset] = None
-    spec_json = await _fetch_spec_json(name)
-    if spec_json is not None:
-        try:
-            existing = Preset.model_validate_json(spec_json)
-        except Exception as exc:  # noqa: BLE001 - regenerate any un-loadable row
-            logger.warning(
-                "Compat preset %r is stored in an un-loadable state (%s); "
-                "regenerating from the current placeholder definition.",
-                name,
-                _summarize_load_error(exc),
-            )
-
-    if existing:
-        if (
-            existing.compat_status != COMPAT_PLACEHOLDER_STATUS
-            or existing.version != 2
-            or existing.mode != "fugu_compat"
-        ):
-            replacement = compat_placeholder_preset(name)
-            existing.compat_status = replacement.compat_status
-            existing.display_name = replacement.display_name
-            existing.mode = replacement.mode
-            existing.prompts = replacement.prompts
-            await save_preset(existing)
-        return existing
-
-    preset = compat_placeholder_preset(name)
-    await save_preset(preset)
-    return preset
-
-
-async def ensure_compat_placeholder_presets() -> None:
-    for name in sorted(COMPAT_PLACEHOLDER_PRESET_NAMES):
-        await get_or_create_compat_placeholder_preset(name)

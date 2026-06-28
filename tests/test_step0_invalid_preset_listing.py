@@ -196,39 +196,3 @@ async def test_corrupt_row_with_non_validation_error_is_isolated(tmp_path):
     with pytest.raises(OmniFusionError) as exc:
         await get_preset("corrupt")
     assert exc.value.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_poisoned_compat_preset_self_heals(client, tmp_path):
-    """A poisoned reserved compat preset (fugu/fugu-ultra) must NOT take down
-    /v1/models or app startup: ensure_compat_placeholder_presets() runs before
-    the resilient list_presets(), so it has to regenerate the bad row."""
-    await init_db()
-
-    # Seed a 'fugu' row whose stored stage values exceed the current limits.
-    over = settings.omnifusion_max_tokens_limit + 1
-    stage = {"max_tokens": over, "timeout": settings.omnifusion_max_stage_timeout + 1}
-    poison_fugu = json.dumps(
-        {
-            "name": "fugu",
-            "strategy": "B",
-            "panel_models": ["x"],
-            "panel": stage,
-            "judge_model": "x",
-            "judge": stage,
-            "final_model": "x",
-            "final": stage,
-        }
-    )
-    await _insert_raw_preset("fugu", poison_fugu)
-
-    headers = {"Authorization": "Bearer preset-key"}
-    res = client.get("/v1/models", headers=headers)
-    assert res.status_code == 200
-    ids = {entry["id"] for entry in res.json()["data"]}
-    assert "fusion/fugu" in ids
-
-    # The poison row was regenerated in place, so it now loads cleanly.
-    healed = await get_preset("fugu")
-    assert healed is not None
-    assert healed.mode == "fugu_compat"
