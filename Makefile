@@ -14,7 +14,7 @@ quickstart:
 	uv run omnifusion quickstart --serve
 
 dev:
-	uv run uvicorn src.omnifusion.main:app --reload
+	uv run uvicorn omnifusion.main:app --reload
 
 test:
 	uv run pytest tests/
