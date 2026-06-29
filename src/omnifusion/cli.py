@@ -197,7 +197,7 @@ def quickstart(serve: bool = False) -> None:
         print("\nStarting development server on http://127.0.0.1:8000 ...")
         import uvicorn
 
-        uvicorn.run("src.omnifusion.main:app", host="127.0.0.1", port=8000, reload=True)
+        uvicorn.run("omnifusion.main:app", host="127.0.0.1", port=8000, reload=True)
 
 
 async def rotate_key_async():

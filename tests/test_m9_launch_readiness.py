@@ -69,6 +69,13 @@ def test_readme_has_ci_badge_and_from_readme_walkthrough():
     assert "docs/quickstart.md" in readme
 
 
+def test_make_dev_uses_installed_package_import_path():
+    makefile = Path("Makefile").read_text()
+
+    assert "uv run uvicorn omnifusion.main:app --reload" in makefile
+    assert "uv run uvicorn src.omnifusion.main:app --reload" not in makefile
+
+
 def test_changelog_documents_initial_release():
     changelog = Path("CHANGELOG.md").read_text()
     assert "0.1.0" in changelog

@@ -125,6 +125,25 @@ def test_quickstart_creates_env_from_example_when_missing(workdir):
     assert _env_value(env, "OMNIFUSION_SECRET_KEY") is not None
 
 
+def test_quickstart_serve_uses_installed_package_import_path(workdir, monkeypatch):
+    started = {}
+
+    def fake_run(app_path, **kwargs):
+        started["app_path"] = app_path
+        started["kwargs"] = kwargs
+
+    monkeypatch.setattr("uvicorn.run", fake_run)
+
+    cli.quickstart(serve=True)
+
+    assert started["app_path"] == "omnifusion.main:app"
+    assert started["kwargs"] == {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "reload": True,
+    }
+
+
 def test_placeholder_detection_helpers():
     assert cli._is_placeholder_secret_key("YOUR_FERNET_SECRET_KEY")
     assert cli._is_placeholder_secret_key("")
