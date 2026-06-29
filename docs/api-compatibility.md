@@ -10,6 +10,19 @@ OmniFusion exposes OpenAI-compatible routes under both `/v1` and `/api/v1`.
 - Legacy `functions` and `function_call` normalize to `tools` and `tool_choice`.
 - Text content-part arrays are accepted; non-text parts are rejected.
 
+### Tool Fusion
+
+Tool-calling requests run per-step fusion: every panel model proposes the next
+action in parallel, then the judge **authors the final tool call(s)** — it starts
+from the best agent's proposal and corrects the name or arguments where they are
+wrong, incomplete, or improvable. The emitted calls are validated against the
+request's `tools` (unknown tool names, malformed arguments, or a legacy
+`best_index`-only judge response fall back to the selected panel proposal), so the
+response is always a standard assistant `tool_calls` message with
+`finish_reason: "tool_calls"` that the client executes locally. `parallel_tool_calls`
+is honored: when `false`, exactly one call is emitted; when unset or `true`, the
+judge may emit multiple calls.
+
 ### Judge Determinism
 
 For OpenRouter parity the internal judge call is deterministic: it always runs at

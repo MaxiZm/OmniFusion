@@ -57,8 +57,9 @@ ablation evidence before any benchmark or default-strategy claim.
   workloads.
 - **Streaming**: canonical OpenAI-style SSE chunks, terminal usage chunks when
   requested, and trace IDs.
-- **Tool call compatibility**: forwards tool-capable requests through a selected
-  model path while preserving OpenAI wire shape.
+- **Tool call compatibility**: per-step fusion judges the panel's proposed tool
+  calls and emits a judge-authored final tool call (falling back to a panel
+  proposal if the judge output is unusable), all while preserving OpenAI wire shape.
 - **Provider registry**: configure provider type, base URL, API key or API key
   env reference, and allowed models.
 - **Preset registry**: define panel, judge, final, prompts, strategy, stage

@@ -22,6 +22,7 @@ V4 pro/flash (tools work in both thinking and non-thinking modes) — do. A mode
 genuinely doesn't support tools errors on the call and is dropped from the panel.
 """
 import asyncio
+import json
 import time
 import uuid
 import logging
@@ -108,6 +109,77 @@ def _normalize_tool_calls(tool_calls) -> Optional[list]:
     return out or None
 
 
+def _tool_names(tools) -> set:
+    """Collect the function names declared in the request's `tools` array.
+
+    `tools` here is the model_dump'd request list, i.e. dicts shaped like
+    {"type": "function", "function": {"name": ...}}. Only function tools have a
+    name the judge may legitimately emit; server tools (openrouter:*) do not.
+    """
+    names = set()
+    for t in tools or []:
+        if not isinstance(t, dict):
+            continue
+        fn = t.get("function") or {}
+        name = fn.get("name")
+        if name:
+            names.add(name)
+    return names
+
+
+def _sanitize_judge_tool_calls(judge_calls, valid_names, parallel_tool_calls) -> Optional[list]:
+    """Validate + normalize judge-authored tool calls into OpenAI-shaped dicts.
+
+    The judge may rewrite the panel's proposals into the final tool call(s). We must
+    not trust that output blindly, so this:
+      - keeps only function-type calls whose name is a declared request tool;
+      - serializes dict/list arguments to a JSON string (judges often emit an object);
+      - defaults missing/None arguments to "{}";
+      - synthesizes a call id when absent;
+      - drops anything malformed;
+      - returns at most the first valid call when parallel_tool_calls is False.
+
+    Returns a non-empty list of OpenAI-shaped tool_call dicts, or None if nothing
+    usable remains (caller then falls back to the selected panel proposal).
+    """
+    if not isinstance(judge_calls, list) or not judge_calls:
+        return None
+    out = []
+    for tc in judge_calls:
+        if not isinstance(tc, dict):
+            continue
+        # Accept only function calls. A missing type defaults to "function" since
+        # that is the only call shape OpenAI tool calling defines.
+        if tc.get("type", "function") != "function":
+            continue
+        fn = tc.get("function")
+        if not isinstance(fn, dict):
+            continue
+        name = fn.get("name")
+        if not name or name not in valid_names:
+            continue
+        args = fn.get("arguments")
+        if isinstance(args, (dict, list)):
+            args = json.dumps(args)
+        elif args is None:
+            args = "{}"
+        elif not isinstance(args, str):
+            # Numbers/bools/etc. — coerce to a JSON string defensively.
+            args = json.dumps(args)
+        out.append(
+            {
+                "id": tc.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                "type": "function",
+                "function": {"name": name, "arguments": args},
+            }
+        )
+    if not out:
+        return None
+    if parallel_tool_calls is False:
+        return out[:1]
+    return out
+
+
 def _usage_tokens(usage) -> tuple:
     """Extract (prompt_tokens, completion_tokens) from a usage object/dict (0 if absent)."""
     if usage is None:
@@ -173,16 +245,26 @@ def _describe_proposal(i: int, p: dict) -> str:
     return f"[Agent {i}] proposes FINAL ANSWER: {text[:600]}"
 
 
-async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict:
-    """Judge selects the single best next action across the panel's proposals.
+async def _decide_next_step(run_id, preset, dict_messages, ok_proposals, tools=None) -> dict:
+    """Judge selects the best next action and authors the final tool call(s).
 
-    Returns {"decision", "best_index", "cost", "prompt_tokens", "completion_tokens"}
-    so the coordinating judge call's usage/cost is aggregated, not dropped.
+    Returns {"decision", "best_index", "tool_calls", "cost", "prompt_tokens",
+    "completion_tokens"} so the coordinating judge call's usage/cost is aggregated,
+    not dropped. "tool_calls" is the judge's raw authored call list (or None for a
+    legacy best_index-only response); the caller sanitizes it against the request
+    tools and falls back to the selected panel proposal when it is unusable.
     """
     # If nobody proposed a tool call, the step is necessarily a final answer.
     any_tool = any(p.get("tool_calls") for p in ok_proposals)
     if not any_tool:
-        return {"decision": "final", "best_index": 0, "cost": 0.0, "prompt_tokens": 0, "completion_tokens": 0}
+        return {
+            "decision": "final",
+            "best_index": 0,
+            "tool_calls": None,
+            "cost": 0.0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
 
     descriptions = "\n".join(
         _describe_proposal(i, p) for i, p in enumerate(ok_proposals)
@@ -194,20 +276,29 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
             last_ctx = str(m.get("content"))[:1500]
             break
 
+    tool_names = sorted(_tool_names(tools))
+    available_tools = ", ".join(tool_names) if tool_names else "(see agent proposals)"
+
     judge_prompt = (
         "You are the coordinator of a panel of agents solving a task that may require "
         "tools (functions). Below is the latest task context and each agent's proposed "
         "NEXT step. Choose the single best next step that most correctly advances the "
         "task toward a complete, accurate solution.\n\n"
         "Rules:\n"
-        "- If a tool call is the best next step, pick the agent whose tool call (name + "
-        "arguments) is most correct and useful. Prefer well-formed, relevant calls.\n"
+        "- If a tool call is the best next step, set decision \"tool\" and AUTHOR the "
+        "final tool call(s) yourself in \"tool_calls\": start from the best agent's "
+        "proposal and CORRECT the name or arguments where they are wrong, incomplete, "
+        "or could be improved. Use only tool names from AVAILABLE TOOLS. Each call's "
+        "\"arguments\" must be a JSON object encoded as a string.\n"
+        "- Set \"best_index\" to the agent whose proposal you based your call on.\n"
         "- If the task is already solved and the agents should now produce a final "
         "answer, choose decision \"final\".\n\n"
+        f"AVAILABLE TOOLS: {available_tools}\n\n"
         f"TASK CONTEXT:\n{last_ctx}\n\n"
         f"PROPOSED NEXT STEPS:\n{descriptions}\n\n"
         'Output ONLY JSON: {"decision":"tool"|"final","best_index":<agent number>,'
-        '"reasoning":"<one sentence>"}'
+        '"tool_calls":[{"type":"function","function":{"name":"<tool>",'
+        '"arguments":"<json-object-string>"}}],"reasoning":"<one sentence>"}'
     )
 
     messages = [{"role": "user", "content": judge_prompt}]
@@ -216,6 +307,7 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
     cost = 0.0
     judge_pt = 0
     judge_ct = 0
+    judge_tool_calls = None
     try:
         # Request JSON mode; if a model rejects it, retry without (the extractor is
         # robust either way). filter_params drops it for providers that don't support it.
@@ -249,6 +341,11 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
         data = extract_json_from_text(resp.choices[0].message.content)
         decision = data.get("decision", "tool")
         best_index = int(data.get("best_index", 0))
+        # Raw judge-authored calls (sanitized by the caller). Legacy responses with
+        # only best_index leave this None, which triggers the panel-proposal fallback.
+        raw_calls = data.get("tool_calls")
+        if isinstance(raw_calls, list):
+            judge_tool_calls = raw_calls
     except Exception as e:
         logger.warning(f"tool-judge failed, defaulting to first tool proposal: {e}")
         decision, best_index = "tool", 0
@@ -267,6 +364,7 @@ async def _decide_next_step(run_id, preset, dict_messages, ok_proposals) -> dict
     return {
         "decision": decision,
         "best_index": best_index,
+        "tool_calls": judge_tool_calls,
         "cost": cost,
         "prompt_tokens": judge_pt,
         "completion_tokens": judge_ct,
@@ -315,17 +413,30 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
 
     # 2. Judge selects the best next action. Its cost/tokens are aggregated below so
     # the coordinating tool-judge call is not dropped from the trace/usage.
-    decision = await _decide_next_step(run_id, preset, dict_messages, ok)
+    decision = await _decide_next_step(run_id, preset, dict_messages, ok, tools)
     step_judge_cost = decision.get("cost", 0.0)
 
     # Aggregate panel + tool-judge token usage so responses report real usage.
     panel_pt = sum(p.get("prompt_tokens", 0) for p in proposals) + decision.get("prompt_tokens", 0)
     panel_ct = sum(p.get("completion_tokens", 0) for p in proposals) + decision.get("completion_tokens", 0)
 
-    # 3a. Tool step: return the chosen tool call(s); client executes and loops back.
+    # 3a. Tool step: emit the judge-authored tool call(s); client executes and loops
+    # back. The judge rewrites the panel proposals into a corrected final call; if its
+    # output is unusable (unknown tool, malformed, or legacy best_index-only), fall
+    # back to the selected panel proposal so the loop never stalls.
     if decision["decision"] == "tool":
         chosen = ok[decision["best_index"]]
-        tool_calls = chosen["tool_calls"]
+        judge_authored = _sanitize_judge_tool_calls(
+            decision.get("tool_calls"),
+            _tool_names(tools),
+            getattr(body, "parallel_tool_calls", None),
+        )
+        if judge_authored:
+            tool_calls = judge_authored
+            consensus = f"Judge-authored tool call (based on {chosen['model']}'s proposal)"
+        else:
+            tool_calls = chosen["tool_calls"]
+            consensus = f"Selected tool call from {chosen['model']}"
         # Build a trace summarizing the step (coerce names defensively).
         panel_results = [
             PanelResult(
@@ -352,7 +463,7 @@ async def run_fusion_with_tools(run_id, preset: Preset, body: ChatCompletionRequ
             degraded=False,
             panel_results=panel_results,
             judge_analysis=JudgeAnalysis(
-                consensus=f"Selected tool call from {chosen['model']}",
+                consensus=consensus,
             ),
             final_answer=None,
             metadata=_trace_metadata(preset, web_sources),
