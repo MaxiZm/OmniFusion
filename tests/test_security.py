@@ -67,7 +67,7 @@ def test_ssrf_egress_protection():
         validate_base_url("http://192.168.1.50:8000/v1", "openai")
     assert "blocked" in str(exc.value)
 
-    # 4. Allow private IP for local provider types (ollama, lmstudio)
+    # 4. Allow private IP for local / self-hosted provider types
     assert (
         validate_base_url("http://127.0.0.1:11434/v1", "ollama")
         == "http://127.0.0.1:11434/v1"
@@ -75,6 +75,16 @@ def test_ssrf_egress_protection():
     assert (
         validate_base_url("http://192.168.1.100:1234/v1", "lmstudio")
         == "http://192.168.1.100:1234/v1"
+    )
+    # Custom (OpenAI/Anthropic-compatible) providers are admin-configured
+    # self-hosted endpoints and are commonly on loopback (vLLM, llama.cpp, …).
+    assert (
+        validate_base_url("http://[::1]:8000/v1", "custom_openai")
+        == "http://[::1]:8000/v1"
+    )
+    assert (
+        validate_base_url("http://127.0.0.1:8000/v1", "custom_anthropic")
+        == "http://127.0.0.1:8000/v1"
     )
 
     # 5. Allow private IP when OMNIFUSION_ALLOW_PRIVATE_EGRESS is enabled

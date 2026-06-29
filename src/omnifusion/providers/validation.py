@@ -6,6 +6,11 @@ from ..settings import settings
 
 logger = logging.getLogger("omnifusion.ssrf")
 
+# Provider types that legitimately point at self-hosted / local endpoints
+# (loopback or private LAN). These are configured exclusively by the
+# authenticated admin with an explicit base_url, so private egress is expected.
+LOCAL_PROVIDER_TYPES = ("ollama", "lmstudio", "custom_openai", "custom_anthropic")
+
 
 def _check_ip_address(ip: str, provider_type: str) -> None:
     """Raises ConfigurationError if the IP is in a blocked range."""
@@ -51,8 +56,8 @@ def validate_base_url(url: str, provider_type: str) -> str:
     if not hostname:
         raise ConfigurationError("base_url must have a hostname")
 
-    # Local providers are allowed to hit loopback/private
-    if provider_type in ("ollama", "lmstudio"):
+    # Local / self-hosted providers are allowed to hit loopback/private
+    if provider_type in LOCAL_PROVIDER_TYPES:
         return url
 
     if settings.omnifusion_allow_private_egress:
