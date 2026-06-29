@@ -26,9 +26,9 @@
     .status-bar .status-dot {
         width: 8px; height: 8px; flex-shrink: 0;
         background: var(--ink-4);
-        transition: background var(--med) var(--ease);
+        transition: background var(--med) var(--ease-out);
     }
-    .status-bar.is-running .status-dot { background: var(--warn); animation: pulse-dot 1.3s var(--ease) infinite; }
+    .status-bar.is-running .status-dot { background: var(--warn); animation: pulse-dot 1.3s var(--ease-out) infinite; }
     .status-bar.is-done .status-dot { background: var(--ok); }
     .status-bar.is-error .status-dot { background: var(--danger); }
     #status-indicator { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -68,7 +68,7 @@
         border: 1px solid var(--rule);
         border-left: 2px solid var(--rule-strong);
         font-size: var(--t-body);
-        transition: border-color var(--med) var(--ease), background var(--med) var(--ease);
+        transition: border-color var(--med) var(--ease-out), background var(--med) var(--ease-out);
     }
     .panelist-card.ok { border-left-color: var(--ok); }
     .panelist-card.error, .panelist-card.timeout { border-left-color: var(--danger); }
@@ -154,7 +154,7 @@
     .output-stream:empty::before {
         content: 'The verdict will be written here, streamed token by token…';
         color: var(--ink-4);
-        font-size: var(--t-base); font-style: italic;
+        font-size: var(--t-base);
     }
 
     /* ── Idle / empty state ── */
@@ -165,7 +165,7 @@
     }
     .empty-feed .empty-glyph { width: 44px; height: 44px; border: 1px solid var(--rule-strong); display: grid; place-items: center; color: var(--ink-3); margin-bottom: var(--sp-1); }
     .empty-feed .empty-glyph svg { width: 22px; height: 22px; stroke-width: 1.4; }
-    .empty-feed .empty-title { font-family: var(--serif); font-size: var(--t-lead); color: var(--ink); font-style: italic; }
+    .empty-feed .empty-title { font-family: var(--serif); font-size: var(--t-lead); color: var(--ink); }
     .empty-feed p { margin: 0; font-size: var(--t-body); color: var(--ink-3); max-width: 40ch; line-height: 1.55; }
 </style>
 

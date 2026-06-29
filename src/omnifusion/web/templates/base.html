@@ -7,39 +7,50 @@
     <!-- Fonts: Newsreader (editorial serif display) · Archivo (technical grotesque) · Spline Sans Mono (data) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,18..72,400;0,18..72,500;1,18..72,400&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:opsz,wght@18..72,400;18..72,500;18..72,600&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.11"></script>
     <style>
         :root {
-            /* ── Surfaces: warm graphite, layered ── */
-            --bg: #15140f;
-            --surface-1: #1b1a14;
-            --surface-2: #211f18;
+            /* ── Surfaces: warm graphite, layered (ported from the OmniFusion
+               site system — all tinted toward amber, ≥0.005 chroma) ── */
+            --bg: #0e0d09;
+            --bg-2: #13120d;
+            --surface-1: #1a1913;
+            --surface-2: #201e17;
             --surface-3: #28261d;
             --surface-hover: #2f2c22;
+            --surface-glass: rgba(20, 19, 13, 0.72);
             --paper: #ece7da;           /* the "page" ink colour, used as text */
 
             /* ── Hairline rules ── */
             --rule: #322f25;
             --rule-strong: #423e30;
-            --rule-faint: #262318;
+            --rule-faint: #201d15;
+            --hairline-hi: rgba(255, 255, 255, 0.035);
 
-            /* ── Ink (text) ── */
+            /* ── Ink (text) — contrast-audited: ink-3/ink-4 raised to the
+               site system's accessible values (the prior muted greys fell
+               below 4.5:1 on surface-1/3). ── */
             --ink: #ece7da;
             --ink-2: #b3ad9c;
-            --ink-3: #837d6c;
-            --ink-4: #5c5849;
+            --ink-3: #9a9482;           /* muted text — ≥4.5:1 on every surface */
+            --ink-4: #8b8676;           /* faint metadata text — ≥4.5:1 on dark surfaces */
+            --ink-faint: #46433a;       /* decoration only (dot borders / inert ticks) — not for text */
             --on-accent: #160d06;
 
-            /* ── The ONE accent: molten amber ── */
+            /* ── The ONE accent: molten amber. Depth from deep ember + black,
+               no second hue. ── */
             --accent: #e8743b;
             --accent-bright: #f59056;
             --accent-deep: #7a3c1e;
+            --accent-ember: #52260f;
             --accent-wash: rgba(232, 116, 59, 0.12);
+            --accent-tint: rgba(232, 116, 59, 0.10);
             --accent-line: rgba(232, 116, 59, 0.42);
+            --accent-glow: rgba(245, 144, 86, 0.42);
 
-            /* ── Status (desaturated, ink-adjacent) ── */
+            /* ── Status (desaturated, ink-adjacent — not a 2nd brand hue) ── */
             --ok: #9bb38a;
             --ok-wash: rgba(155, 179, 138, 0.13);
             --ok-line: rgba(155, 179, 138, 0.38);
@@ -81,16 +92,21 @@
             --r-lg: 4px;
             --r-full: 999px;
 
-            /* ── Motion ── */
-            --ease: cubic-bezier(0.2, 0, 0, 1);
+            /* ── Motion: three named easings (ported from the site system) ── */
+            --ease-out: cubic-bezier(0.2, 0, 0, 1);
+            --ease-in: cubic-bezier(0.4, 0, 1, 1);
+            --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
             --fast: 0.12s;
             --med: 0.22s;
+            --dur-1: 0.15s;
+            --dur-2: 0.25s;
+            --dur-3: 0.40s;
 
             --sidebar-w: 236px;
         }
 
         * { box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; }
+        html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
 
         body {
             background-color: var(--bg);
@@ -104,6 +120,7 @@
             line-height: 1.5;
             margin: 0;
             min-height: 100vh;
+            overflow-x: clip;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             font-feature-settings: "ss01";
@@ -171,7 +188,7 @@
             letter-spacing: -0.01em;
             line-height: 1;
         }
-        .brand-word em { font-style: italic; color: var(--accent); font-weight: 400; }
+        .brand-word em { font-style: normal; color: var(--accent); font-weight: 500; }
         .brand-sub {
             display: block;
             margin-top: var(--sp-3);
@@ -204,7 +221,7 @@
             font-size: var(--t-body);
             letter-spacing: -0.005em;
             padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
-            transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+            transition: color var(--fast) var(--ease-out), background var(--fast) var(--ease-out);
         }
         .nav-links a svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; stroke-width: 1.6; }
         .nav-links a:hover { color: var(--ink); background: var(--surface-hover); }
@@ -240,7 +257,7 @@
             font-family: var(--sans);
             font-weight: 500;
             font-size: var(--t-body);
-            transition: color var(--fast) var(--ease);
+            transition: color var(--fast) var(--ease-out);
         }
         .nav-logout svg { width: 15px; height: 15px; stroke-width: 1.6; }
         .nav-logout:hover { color: var(--accent); }
@@ -355,7 +372,7 @@
             letter-spacing: 0.005em;
             line-height: 1;
             cursor: pointer;
-            transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+            transition: background var(--fast) var(--ease-out), border-color var(--fast) var(--ease-out), color var(--fast) var(--ease-out);
             white-space: nowrap;
             text-decoration: none;
         }
@@ -410,7 +427,7 @@
             border-radius: var(--r-sm);
             font-size: var(--t-body);
             font-family: var(--sans);
-            transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+            transition: border-color var(--fast) var(--ease-out), box-shadow var(--fast) var(--ease-out);
         }
         .form-control.mono, input.mono, textarea.mono { font-family: var(--mono); font-size: var(--t-body); }
         .form-control::placeholder { color: var(--ink-4); }
@@ -443,7 +460,7 @@
             cursor: pointer;
             position: relative;
             flex-shrink: 0;
-            transition: all var(--fast) var(--ease);
+            transition: background var(--fast) var(--ease-out), border-color var(--fast) var(--ease-out);
         }
         input[type="checkbox"]:hover { border-color: var(--ink-4); }
         input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
@@ -456,8 +473,8 @@
         input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-wash); }
 
         a:focus-visible, button:focus-visible, .form-control:focus-visible {
-            outline: 2px solid var(--accent);
-            outline-offset: 2px;
+            outline: 2px solid var(--accent-bright);
+            outline-offset: 3px;
         }
         .form-control:focus-visible { outline: none; }
 
@@ -486,7 +503,7 @@
         }
         tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
         tbody tr:last-child td { border-bottom: none; }
-        tbody tr { transition: background var(--fast) var(--ease); }
+        tbody tr { transition: background var(--fast) var(--ease-out); }
         tbody tr:hover td { background: var(--surface-2); }
         td.cell-id { font-family: var(--mono); font-size: var(--t-small); color: var(--ink-2); }
         .empty-cell { padding: 0 !important; }
@@ -532,7 +549,7 @@
             margin-bottom: var(--sp-1);
         }
         .empty-glyph svg { width: 22px; height: 22px; stroke-width: 1.4; }
-        .empty-title { font-family: var(--serif); font-size: var(--t-lead); color: var(--ink); font-style: italic; }
+        .empty-title { font-family: var(--serif); font-size: var(--t-lead); color: var(--ink); }
         .empty-text { margin: 0; font-size: var(--t-body); color: var(--ink-3); max-width: 40ch; line-height: 1.55; }
 
         /* ════════════ Badges / pills ════════════ */
@@ -563,7 +580,7 @@
         .bg-neutral { background: var(--surface-3); color: var(--ink-2); border-color: var(--rule-strong); }
 
         @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-        .badge.bg-warning::before { animation: pulse-dot 1.3s var(--ease) infinite; }
+        .badge.bg-warning::before { animation: pulse-dot 1.3s var(--ease-out) infinite; }
 
         /* ════════════ Alerts ════════════ */
         .alert {

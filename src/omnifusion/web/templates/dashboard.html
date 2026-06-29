@@ -86,8 +86,11 @@
     }
     .fill {
         height: 100%;
+        width: 100%;
+        transform-origin: left center;
+        transform: scaleX(var(--fill, 0));
         background: var(--accent);
-        transition: width 0.7s var(--ease);
+        transition: transform 0.7s var(--ease-out);
         position: relative; z-index: 1;
     }
     .fill.warn { background: var(--warn); }
@@ -174,9 +177,9 @@
         <div class="track">
             {% if daily_ceiling > 0 %}
                 {% set pct = (daily_spent / daily_ceiling) * 100 %}
-                <div class="fill {% if pct >= 100 %}over{% elif pct >= 80 %}warn{% endif %}" style="width: {{ pct if pct < 100 else 100 }}%"></div>
+                <div class="fill {% if pct >= 100 %}over{% elif pct >= 80 %}warn{% endif %}" style="--fill: {{ '%.4f'|format((pct if pct < 100 else 100) / 100) }}"></div>
             {% else %}
-                <div class="fill" style="width: 0%"></div>
+                <div class="fill" style="--fill: 0"></div>
             {% endif %}
         </div>
         {% if daily_ceiling > 0 %}

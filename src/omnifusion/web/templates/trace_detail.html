@@ -53,9 +53,9 @@
     .stage-timeline { list-style: none; margin: 0 0 14px; padding: 0; border-left: 1px solid var(--rule-strong); }
     .stage-event { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 0 8px 18px; position: relative; }
     .stage-marker { position: absolute; left: -5px; top: 14px; width: 9px; height: 9px; border-radius: 50%; background: var(--ink-4); border: 1px solid var(--bg); }
-    .stage-event.status-ok .stage-marker { background: var(--ok, #9bb38a); }
-    .stage-event.status-error .stage-marker, .stage-event.status-timeout .stage-marker, .stage-event.status-rate_limited .stage-marker { background: var(--danger, #d66); }
-    .stage-event.status-degraded .stage-marker, .stage-event.status-skipped .stage-marker { background: var(--warn, #d6a44f); }
+    .stage-event.status-ok .stage-marker { background: var(--ok); }
+    .stage-event.status-error .stage-marker, .stage-event.status-timeout .stage-marker, .stage-event.status-rate_limited .stage-marker { background: var(--danger); }
+    .stage-event.status-degraded .stage-marker, .stage-event.status-skipped .stage-marker { background: var(--warn); }
     .stage-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; flex: 1; min-width: 180px; }
     .stage-name { font-family: var(--mono); font-size: var(--t-small); color: var(--ink); letter-spacing: 0.02em; }
     .stage-model { font-size: var(--t-micro); }
